@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hội Sách - Bình Chọn Thảo Luận</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <style>
+    @keyframes pulse-border {
+      0%, 100% { border-color: #f59e0b; }
+      50% { border-color: #fde68a; }
+    }
+    .shield-card { animation: pulse-border 2s infinite; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans pb-24">
+
+  <!-- Header -->
+  <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-20">
+    <div class="max-w-xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div>
+        <h1 class="text-lg font-bold tracking-tight">📚 Book Club Voting</h1>
+        <p id="status-badge" class="text-xs text-indigo-200">Đang mở bình chọn</p>
+      </div>
+      <div id="vote-counter-box" class="bg-indigo-800 px-3 py-1.5 rounded-full text-xs font-semibold">
+        Đã chọn: <span id="user-vote-count" class="text-amber-300 text-sm">0</span>/3
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-xl mx-auto flex border-t border-indigo-500 text-sm font-medium">
+      <button onclick="switchTab('vote')" id="tab-vote" class="flex-1 py-2.5 text-center border-b-2 border-white bg-indigo-700/50">
+        Bình chọn kỳ này
+      </button>
+      <button onclick="switchTab('history')" id="tab-history" class="flex-1 py-2.5 text-center border-b-2 border-transparent text-indigo-200 hover:text-white">
+        Lịch sử thảo luận
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto px-4 pt-4">
+
+    <!-- ==================== TAB 1: VOTING ==================== -->
+    <div id="view-vote">
+      
+      <!-- Admin Panel (Chỉ hiện khi URL có ?admin=1234) -->
+      <div id="admin-panel" class="hidden mb-5 bg-slate-800 text-white p-4 rounded-xl shadow-lg border border-slate-700">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-amber-400">👑 Bảng điều khiển Host</span>
+          <button onclick="toggleLock()" id="btn-lock" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded">
+            🔒 Khóa bình chọn
+          </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button onclick="openEndSessionModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-3 rounded-lg transition">
+            🏆 Chốt Top 3 & Sang kỳ mới
+          </button>
+          <button onclick="clearAllCurrent()" class="bg-rose-600/80 hover:bg-rose-600 text-white text-sm font-medium py-2 px-3 rounded-lg transition">
+            🗑️ Xóa danh sách hiện tại
+          </button>
+        </div>
+      </div>
+
+      <!-- Form đề xuất sách mới -->
+      <div id="add-book-section" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-5">
+        <h2 class="text-sm font-bold text-slate-700 mb-2.5">➕ Đề xuất sách cho buổi hôm nay</h2>
+        <form onsubmit="addBook(event)" class="space-y-2.5">
+          <input type="text" id="book-title" required placeholder="Tên cuốn sách..." 
+            class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500">
+          <div class="flex gap-2">
+            <input type="text" id="book-proposer" required placeholder="Tên của bạn..." 
+              class="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-indigo-500">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+              Thêm
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Chú thích luật chơi -->
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-900 space-y-1">
+        <p><strong>Luật chọn 3 cuốn:</strong> 2 cuốn tổng điểm cao nhất + 1 suất <strong>🛡️ Bảo hiểm</strong> (trượt 2 kỳ) hoặc quay số <strong>🎲 Wildcard</strong>.</p>
+        <p>🔥 <em>Điểm tích lũy:</em> Sách trượt kỳ trước tự động được giữ lại và cộng +1 điểm cho kỳ sau.</p>
+      </div>
+
+      <!-- Danh sách sách -->
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-sm font-bold text-slate-600 uppercase tracking-wide">Bảng xếp hạng trực tiếp</h2>
+        <span id="total-books-count" class="text-xs text-slate-500">0 cuốn</span>
+      </div>
+      
+      <div id="book-list" class="space-y-3">
+        <p class="text-center text-sm text-slate-400 py-8">Đang tải dữ liệu...</p>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: HISTORY ==================== -->
+    <div id="view-history" class="hidden space-y-4">
+      <div id="history-list" class="space-y-4">
+        <p class="text-center text-sm text-slate-400 py-8">Chưa có lịch sử kỳ họp nào.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal Chốt sổ & Quay Wildcard -->
+  <div id="end-modal" class="hidden fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <h3 class="text-lg font-bold text-slate-800 mb-1">🏆 Kết quả 3 cuốn được chọn</h3>
+      <p class="text-xs text-slate-500 mb-4">Kiểm tra kết quả trước khi lưu vào lịch sử và cộng điểm cho các cuốn trượt.</p>
+      
+      <div id="winners-preview" class="space-y-2.5 mb-4"></div>
+
+      <!-- Khu vực quay Wildcard (Chỉ hiện khi cần quay suất thứ 3) -->
+      <div id="wildcard-box" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4 text-center">
+        <p class="text-xs font-semibold text-indigo-800 mb-2">Không có sách Bảo hiểm kỳ 3. Quay số chọn suất thứ 3!</p>
+        <div id="roulette-display" class="text-base font-bold text-indigo-700 py-2 bg-white rounded-lg border border-indigo-100 mb-2">
+          ❓ Sẵn sàng quay
+        </div>
+        <button onclick="spinWildcard()" id="btn-spin" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-full shadow">
+          🎲 Quay Wildcard ngay
+        </button>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t">
+        <button onclick="closeEndModal()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Hủy</button>
+        <button onclick="confirmArchiveAndNext()" id="btn-confirm-archive" class="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-40">
+          Lưu lịch sử & Sang kỳ mới
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. DÁN FIREBASE CONFIG CỦA BẠN VÀO ĐÂY
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "DÁN_API_KEY_CỦA_BẠN",
+      authDomain: "DÁN_AUTH_DOMAIN",
+      databaseURL: "DÁN_DATABASE_URL",
+      projectId: "DÁN_PROJECT_ID",
+      storageBucket: "DÁN_STORAGE_BUCKET",
+      messagingSenderId: "DÁN_SENDER_ID",
+      appId: "DÁN_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ==========================================
+    // 2. KHỞI TẠO BIẾN & TRẠNG THÁI
+    // ==========================================
+    const ADMIN_PASS = "1234"; // Đổi mật khẩu admin tại đây (?admin=1234)
+    const urlParams = new URLSearchParams(window.location.search);
+    const isAdmin = urlParams.get('admin') === ADMIN_PASS;
+
+    if (isAdmin) {
+      document.getElementById('admin-panel').classList.remove('hidden');
+    }
+
+    let booksData = {};
+    let isLocked = false;
+    let userVotedIds = JSON.parse(localStorage.getItem('bookclub_voted_ids') || '[]');
+    
+    // Biến tạm cho Modal chốt sổ
+    let finalWinners = [];
+    let wildcardCandidates = [];
+
+    // ==========================================
+    // 3. LẮNG NGHE DỮ LIỆU REALTIME TỪ FIREBASE
+    // ==========================================
+    db.ref('settings/locked').on('value', (snap) => {
+      isLocked = !!snap.val();
+      const badge = document.getElementById('status-badge');
+      const addSection = document.getElementById('add-book-section');
+      const btnLock = document.getElementById('btn-lock');
+
+      if (isLocked) {
+        badge.textContent = "🔒 Đã khóa bình chọn";
+        badge.className = "text-xs text-amber-300 font-semibold";
+        addSection.classList.add('hidden');
+        if (btnLock) btnLock.textContent = "🔓 Mở lại bình chọn";
+      } else {
+        badge.textContent = "🟢 Đang mở bình chọn";
+        badge.className = "text-xs text-indigo-200";
+        addSection.classList.remove('hidden');
+        if (btnLock) btnLock.textContent = "🔒 Khóa bình chọn";
+      }
+      renderBooks();
+    });
+
+    db.ref('current_session').on('value', (snap) => {
+      booksData = snap.val() || {};
+      // Dọn dẹp localStorage nếu sách đã bị xóa khỏi phiên hiện tại
+      userVotedIds = userVotedIds.filter(id => booksData[id]);
+      localStorage.setItem('bookclub_voted_ids', JSON.stringify(userVotedIds));
+      renderBooks();
+    });
+
+    db.ref('history').on('value', (snap) => {
+      renderHistory(snap.val() || {});
+    });
+
+    // ==========================================
+    // 4. LOGIC HIỂN THỊ & BÌNH CHỌN
+    // ==========================================
+    function renderBooks() {
+      const listEl = document.getElementById('book-list');
+      document.getElementById('user-vote-count').textContent = userVotedIds.length;
+
+      const booksArray = Object.entries(booksData).map(([id, b]) => ({
+        id,
+        ...b,
+        totalScore: (b.votes || 0) + (b.bonusPoints || 0)
+      }));
+
+      document.getElementById('total-books-count').textContent = `${booksArray.length} cuốn`;
+
+      if (booksArray.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-10 bg-white rounded-xl border border-dashed border-slate-300 text-slate-400 text-sm">Chưa có cuốn sách nào. Hãy là người đầu tiên đề xuất!</div>`;
+        return;
+      }
+
+      // Sắp xếp theo Tổng điểm giảm dần, nếu bằng nhau ưu tiên sách trượt nhiều kỳ hơn
+      booksArray.sort((a, b) => b.totalScore - a.totalScore || (b.missedCount || 0) - (a.missedCount || 0));
+
+      listEl.innerHTML = booksArray.map((book, index) => {
+        const isVoted = userVotedIds.includes(book.id);
+        const isShielded = (book.missedCount || 0) >= 2; // Trượt 2 kỳ -> Kỳ 3 có bảo hiểm
+        const reachedLimit = userVotedIds.length >= 3 && !isVoted;
+        const disabled = isLocked || reachedLimit;
+
+        // Huy hiệu thứ hạng
+        let rankBadge = `<span class="text-xs font-bold text-slate-400 w-5">#${index + 1}</span>`;
+        if (index === 0) rankBadge = `<span class="text-base">🥇</span>`;
+        if (index === 1) rankBadge = `<span class="text-base">🥈</span>`;
+        if (index === 2) rankBadge = `<span class="text-base">🥉</span>`;
+
+        return `
+          <div class="bg-white p-3.5 rounded-xl border-2 transition shadow-sm flex items-center justify-between gap-3 
+            ${isVoted ? 'border-indigo-500 bg-indigo-50/30' : (isShielded ? 'border-amber-400 shield-card' : 'border-slate-200')}">
+            
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5 mb-1">
+                ${rankBadge}
+                <h3 class="font-bold text-slate-800 text-sm sm:text-base truncate">${escapeHtml(book.title)}</h3>
+              </div>
+              
+              <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                <span>👤 ${escapeHtml(book.proposer)}</span>
+                ${book.bonusPoints > 0 ? `<span class="bg-orange-100 text-orange-700 font-semibold px-1.5 py-0.5 rounded">🔥 +${book.bonusPoints} tích lũy</span>` : ''}
+                ${isShielded ? `<span class="bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">🛡️ Bảo hiểm kỳ 3</span>` : ''}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <div class="text-lg font-extrabold text-indigo-600 leading-none">${book.totalScore}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${book.votes || 0} vote</div>
+              </div>
+
+              <button onclick="toggleVote('${book.id}')" ${disabled ? 'disabled' : ''}
+                class="px-3.5 py-2 rounded-lg text-xs font-bold transition shadow-sm
+                ${isVoted 
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                  : (disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white border border-indigo-600 text-indigo-600 hover:bg-indigo-50')}">
+                ${isVoted ? '✓ Đã chọn' : 'Vote'}
+              </button>
+
+              ${isAdmin ? `<button onclick="deleteBook('${book.id}')" class="text-slate-300 hover:text-rose-500 text-xs px-1" title="Xóa">✕</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function addBook(e) {
+      e.preventDefault();
+      if (isLocked) return alert("Bình chọn đã khóa!");
+      const titleInput = document.getElementById('book-title');
+      const proposerInput = document.getElementById('book-proposer');
+
+      const newBookRef = db.ref('current_session').push();
+      newBookRef.set({
+        title: titleInput.value.trim(),
+        proposer: proposerInput.value.trim(),
+        votes: 0,
+        bonusPoints: 0,
+        missedCount: 0,
+        createdAt: Date.now()
+      });
+
+      titleInput.value = '';
+    }
+
+    function toggleVote(bookId) {
+      if (isLocked) return;
+      const index = userVotedIds.indexOf(bookId);
+      const bookRef = db.ref(`current_session/${bookId}/votes`);
+
+      if (index > -1) {
+        // Bỏ vote
+        userVotedIds.splice(index, 1);
+        bookRef.transaction(curr => Math.max(0, (curr || 0) - 1));
+      } else {
+        // Thêm vote
+        if (userVotedIds.length >= 3) return alert("Bạn chỉ được chọn tối đa 3 cuốn!");
+        userVotedIds.push(bookId);
+        bookRef.transaction(curr => (curr || 0) + 1);
+      }
+
+      localStorage.setItem('bookclub_voted_ids', JSON.stringify(userVotedIds));
+      renderBooks();
+    }
+
+    // ==========================================
+    // 5. CHỨC NĂNG ADMIN & LUẬT CHƠI 3-TRONG-1
+    // ==========================================
+    function toggleLock() {
+      db.ref('settings/locked').set(!isLocked);
+    }
+
+    function deleteBook(id) {
+      if (confirm("Xóa cuốn sách này?")) db.ref(`current_session/${id}`).remove();
+    }
+
+    function clearAllCurrent() {
+      if (confirm("Xóa toàn bộ danh sách hiện tại mà KHÔNG lưu lịch sử?")) {
+        db.ref('current_session').remove();
+      }
+    }
+
+    function openEndSessionModal() {
+      const booksArray = Object.entries(booksData).map(([id, b]) => ({
+        id,
+        ...b,
+        totalScore: (b.votes || 0) + (b.bonusPoints || 0)
+      }));
+
+      if (booksArray.length < 3) {
+        return alert("Cần ít nhất 3 cuốn sách trong danh sách để chốt Top 3!");
+      }
+
+      // Sắp xếp theo tổng điểm giảm dần
+      booksArray.sort((a, b) => b.totalScore - a.totalScore || (b.missedCount || 0) - (a.missedCount || 0));
+
+      finalWinners = [];
+      wildcardCandidates = [];
+
+      // Suất 1 & Suất 2: Top 2 điểm cao nhất
+      const top1 = { ...booksArray[0], winReason: '🥇 Top 1 Điểm cao' };
+      const top2 = { ...booksArray[1], winReason: '🥈 Top 2 Điểm cao' };
+      finalWinners.push(top1, top2);
+
+      // Các sách còn lại từ vị trí thứ 3 trở đi
+      const remaining = booksArray.slice(2);
+
+      // Kiểm tra xem có sách nào đủ điều kiện Bảo hiểm kỳ 3 (missedCount >= 2) không
+      const shieldedBooks = remaining.filter(b => (b.missedCount || 0) >= 2);
+
+      const wildcardBox = document.getElementById('wildcard-box');
+      const btnConfirm = document.getElementById('btn-confirm-archive');
+
+      if (shieldedBooks.length > 0) {
+        // Ưu tiên cuốn bảo hiểm có điểm cao nhất
+        const top3Shield = { ...shieldedBooks[0], winReason: '🛡️ Suất Bảo hiểm kỳ 3' };
+        finalWinners.push(top3Shield);
+        wildcardBox.classList.add('hidden');
+        btnConfirm.disabled = false;
+      } else {
+        // Không có sách bảo hiểm -> Kích hoạt quay Wildcard
+        wildcardCandidates = remaining;
+        wildcardBox.classList.remove('hidden');
+        document.getElementById('roulette-display').textContent = "❓ Bấm nút bên dưới để quay";
+        btnConfirm.disabled = true; // Phải quay xong mới được bấm lưu
+      }
+
+      renderWinnersPreview();
+      document.getElementById('end-modal').classList.remove('hidden');
+    }
+
+    function renderWinnersPreview() {
+      const container = document.getElementById('winners-preview');
+      container.innerHTML = finalWinners.map(w => `
+        <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex justify-between items-center">
+          <div>
+            <span class="text-[11px] font-bold text-emerald-700 block">${w.winReason}</span>
+            <span class="font-bold text-sm text-slate-800">${escapeHtml(w.title)}</span>
+            <span class="text-xs text-slate-500">(${escapeHtml(w.proposer)})</span>
+          </div>
+          <span class="font-extrabold text-emerald-700 text-sm">${w.totalScore} đ</span>
+        </div>
+      `).join('');
+    }
+
+    function spinWildcard() {
+      if (wildcardCandidates.length === 0) return;
+      const btnSpin = document.getElementById('btn-spin');
+      const display = document.getElementById('roulette-display');
+      btnSpin.disabled = true;
+
+      // Tạo bể bốc thăm có trọng số (mỗi điểm = 1 vé, tối thiểu 1 vé)
+      let weightedPool = [];
+      wildcardCandidates.forEach(book => {
+        const tickets = Math.max(1, book.totalScore);
+        for (let i = 0; i < tickets; i++) weightedPool.push(book);
+      });
+
+      let ticks = 0;
+      const interval = setInterval(() => {
+        const randomPreview = wildcardCandidates[Math.floor(Math.random() * wildcardCandidates.length)];
+        display.textContent = `🎲 ${randomPreview.title}`;
+        ticks++;
+
+        if (ticks > 20) {
+          clearInterval(interval);
+          const luckyBook = weightedPool[Math.floor(Math.random() * weightedPool.length)];
+          display.textContent = `🎉 TRÚNG GIẢI: ${luckyBook.title}`;
+          
+          // Cập nhật suất thứ 3
+          finalWinners = finalWinners.slice(0, 2);
+          finalWinners.push({ ...luckyBook, winReason: '🎲 Suất Wildcard may mắn' });
+          renderWinnersPreview();
+
+          btnSpin.disabled = false;
+          btnSpin.textContent = "🔄 Quay lại";
+          document.getElementById('btn-confirm-archive').disabled = false;
+        }
+      }, 90);
+    }
+
+    function confirmArchiveAndNext() {
+      const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const winnerIds = finalWinners.map(w => w.id);
+
+      // 1. Lưu kết quả vào nhánh history
+      db.ref('history').push({
+        date: today,
+        timestamp: Date.now(),
+        winners: finalWinners.map(w => ({
+          title: w.title,
+          proposer: w.proposer,
+          totalScore: w.totalScore,
+          winReason: w.winReason
+        }))
+      });
+
+      // 2. Cập nhật current_session: Xóa 3 cuốn thắng, giữ & cộng điểm cho các cuốn trượt
+      const nextSessionUpdates = {};
+      Object.entries(booksData).forEach(([id, book]) => {
+        if (!winnerIds.includes(id)) {
+          nextSessionUpdates[id] = {
+            ...book,
+            votes: 0,
+            bonusPoints: (book.bonusPoints || 0) + 1,
+            missedCount: (book.missedCount || 0) + 1
+          };
+        }
+      });
+
+      db.ref('current_session').set(nextSessionUpdates);
+      db.ref('settings/locked').set(false);
+      
+      // Xóa vote cũ trên máy admin
+      localStorage.removeItem('bookclub_voted_ids');
+      userVotedIds = [];
+
+      closeEndModal();
+      switchTab('history');
+    }
+
+    function closeEndModal() {
+      document.getElementById('end-modal').classList.add('hidden');
+    }
+
+    // ==========================================
+    // 6. HIỂN THỊ TAB LỊCH SỬ & TIỆN ÍCH
+    // ==========================================
+    function renderHistory(historyData) {
+      const container = document.getElementById('history-list');
+      const entries = Object.values(historyData).sort((a, b) => b.timestamp - a.timestamp);
+
+      if (entries.length === 0) {
+        container.innerHTML = `<p class="text-center text-sm text-slate-400 py-8">Chưa có lịch sử kỳ họp nào.</p>`;
+        return;
+      }
+
+      container.innerHTML = entries.map((session, idx) => `
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-center border-b border-slate-100 pb-2 mb-3">
+            <span class="font-bold text-indigo-700 text-sm">📅 Kỳ họp ngày ${session.date}</span>
+            <span class="text-xs text-slate-400">Kỳ #${entries.length - idx}</span>
+          </div>
+          <div class="space-y-2">
+            ${(session.winners || []).map(w => `
+              <div class="flex justify-between items-start text-sm bg-slate-50 p-2.5 rounded-lg">
+                <div>
+                  <span class="text-[11px] font-semibold text-indigo-600 block">${w.winReason}</span>
+                  <span class="font-bold text-slate-800">${escapeHtml(w.title)}</span>
+                  <span class="text-xs text-slate-500 block">Người chia sẻ: ${escapeHtml(w.proposer)}</span>
+                </div>
+                <span class="text-xs font-bold bg-white border border-slate-200 px-2 py-1 rounded text-slate-600">${w.totalScore} điểm</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function switchTab(tab) {
+      const viewVote = document.getElementById('view-vote');
+      const viewHistory = document.getElementById('view-history');
+      const tabVote = document.getElementById('tab-vote');
+      const tabHistory = document.getElementById('tab-history');
+
+      if (tab === 'vote') {
+        viewVote.classList.remove('hidden');
+        viewHistory.classList.add('hidden');
+        tabVote.className = "flex-1 py-2.5 text-center border-b-2 border-white bg-indigo-700/50";
+        tabHistory.className = "flex-1 py-2.5 text-center border-b-2 border-transparent text-indigo-200 hover:text-white";
+      } else {
+        viewVote.classList.add('hidden');
+        viewHistory.classList.remove('hidden');
+        tabHistory.className = "flex-1 py-2.5 text-center border-b-2 border-white bg-indigo-700/50";
+        tabVote.className = "flex-1 py-2.5 text-center border-b-2 border-transparent text-indigo-200 hover:text-white";
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+  </script>
+</body>
+</html>
