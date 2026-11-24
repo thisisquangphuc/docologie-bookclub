@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F7F6F2">
+  <title>Debate Workshop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/debate.css">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <header class="sticky top-0 z-30 border-b border-neutral-800 bg-[#111] text-white">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+      <div><a href="index.html" class="text-xs uppercase tracking-[.2em] text-neutral-400">Docologie · Book Club</a><h1 id="page-title" class="serif text-xl"></h1></div>
+      <div class="flex items-center gap-2"><button id="rules-button" class="rounded-full border border-neutral-600 px-3 py-1.5 text-sm" aria-label="Rules">?</button><select id="language" aria-label="Language" class="rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white"><option value="en">EN</option><option value="de">DE</option></select></div>
+    </div>
+  </header>
+  <main id="app" class="mx-auto max-w-6xl px-4 py-6"></main>
+  <div id="rules-modal" hidden class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="rules-title"><div class="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-[#F7F6F2] p-5 sm:p-7"><div class="flex items-start justify-between gap-4"><div><p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]" data-i18n="rulesKicker"></p><h2 id="rules-title" class="serif text-2xl" data-i18n="rulesTitle"></h2></div><button id="close-rules" class="rounded border border-neutral-300 px-3 py-2" data-i18n="close"></button></div><div id="rules-content" class="mt-5 space-y-5 text-sm leading-relaxed"></div></div></div>
+  <script type="module" src="assets/js/debate/app.js"></script>
+</body>
+</html>

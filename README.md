@@ -7,3 +7,7 @@
 - **Tailwind CSS** — utility styling, loaded from the CDN.
 - **Firebase Realtime Database** — real-time data synchronization.
 - **Playfair Display** and **Inter** — typefaces served by Google Fonts.
+
+## Debate Workshop
+
+The workshop experience is available at [`debate.html`](debate.html). See the [feature guide](docs/debate-workshop.md) for its screen modes, data boundaries, and module responsibilities.
