@@ -12,6 +12,13 @@ export function isVotingClosed(state) {
   return state.settings.locked === true || state.pendingResults?.sessionId === sessionId;
 }
 
+export function isWildcardDrawPending(state) {
+  const pending = state.pendingResults;
+  const sessionId = state.settings.sessionId || 'initial';
+  const winnerTarget = Number(pending?.maxTopBooks || state.settings.maxTopBooks || 3);
+  return pending?.sessionId === sessionId && pending?.wildcardCandidates?.length > 0 && (pending.winners?.length || 0) < winnerTarget;
+}
+
 export function createMemberMarkup(t) {
   return `<section id="member-vote-view" class="space-y-5">
     <div id="session-meta" class="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-500"><span id="session-label"></span><span id="session-date"></span></div>
@@ -69,7 +76,7 @@ export function renderIdentity(state, t) {
   const savedBooks = state.memberId && state.ballots[state.memberId]?.sessionId === sessionId ? state.ballots[state.memberId].books || [] : [];
   const chosenBooks = savedBooks.map(id => state.books[id]).filter(Boolean);
   document.querySelector('#member-selection-count').textContent = `${chosenBooks.length} / 3`;
-  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="min-w-0 rounded-lg border border-[#E2E0D8] bg-[#F7F6F2] px-3 py-2"><span class="block break-words font-medium">${escapeHtml(book.title)}</span></li>`).join('');
+  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="min-w-0 rounded-lg border border-neutral-900 bg-white px-3 py-2 text-neutral-900"><span class="block break-words font-medium">${escapeHtml(book.title)}</span></li>`).join('');
   document.querySelector('#member-selection-empty').hidden = chosenBooks.length > 0;
   document.querySelector('#member-selection-empty').textContent = state.memberId ? t('noBooksSelected') : entries.length ? t('selectNameForSummary') : t('noAttendees');
 }
@@ -88,8 +95,10 @@ export function renderBooks(state, t) {
     const selected = state.draft.includes(book.id), limitDisabled = !selected && selectionLimitReached, disabled = closed || limitDisabled;
     const priority = Number(book.missedCount) >= 2;
     const notSelectedLastSession = book.lastStatus === 'carried' && Number(book.lastSessionNumber) === Number(state.settings.sessionNumber || 1) - 1;
-    const badges = `${Number(book.bonusPoints) > 0 ? `<span title="${t('bonusRule')}" aria-label="${t('bonusRule')}" class="rounded-full border px-2 py-1">+${Number(book.bonusPoints)}</span>` : ''}${Number(book.missedCount) > 0 ? `<span title="${t(priority ? 'priorityRule' : 'missedRule')}" aria-label="${t(priority ? 'priorityRule' : 'missedRule')}" class="rounded-full border px-2 py-1">↻ ${Number(book.missedCount)}</span>` : ''}${notSelectedLastSession ? `<span title="${t('notSelectedLastSession')}" aria-label="${t('notSelectedLastSession')}" class="rounded-full border px-2 py-1">↪</span>` : ''}`;
-    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="h-full min-w-0 rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-3 text-left ${closed ? 'pointer-events-none opacity-50' : limitDisabled ? 'cursor-not-allowed opacity-40' : ''}"><span class="grid h-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><span class="flex min-h-0 min-w-0 flex-col"><b class="serif min-h-0 flex-1 overflow-y-auto break-words text-left text-base leading-5 sm:text-lg">${escapeHtml(book.title)}</b><small class="mt-2 block shrink-0 break-words text-right text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</small></span><span class="flex flex-col items-end gap-1 text-[11px]">${badges}</span></span></button>`;
+    const bonusPoints = Math.max(0, Number(book.bonusPoints) || 0);
+    const missedCount = Math.max(0, Number(book.missedCount) || 0);
+    const badges = `<span title="${t('bonusRule')}" aria-label="${t('bonusRule')}: +${bonusPoints}" class="inline-flex items-center gap-1 rounded-full border border-[#E2E0D8] bg-[#F7F6F2] px-1 py-0.5"><span aria-hidden="true" class="font-bold">＋</span><span>${bonusPoints}</span></span><span title="${t(priority ? 'priorityRule' : 'missedRule')}" aria-label="${t(priority ? 'priorityRule' : 'missedRule')}: ${missedCount}" class="inline-flex items-center gap-1 rounded-full border border-[#E2E0D8] bg-[#F7F6F2] px-1 py-0.5 ${priority ? 'font-semibold text-neutral-950' : 'text-neutral-600'}"><span aria-hidden="true">↻</span><span>${missedCount}</span></span>${notSelectedLastSession ? `<span title="${t('notSelectedLastSession')}" aria-label="${t('notSelectedLastSession')}" class="rounded-full border border-[#E2E0D8] bg-[#F7F6F2] px-1 py-0.5">↪</span>` : ''}`;
+    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="h-full min-w-0 rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-3 text-left ${closed ? 'pointer-events-none opacity-50' : limitDisabled ? 'cursor-not-allowed opacity-40' : ''}"><span class="flex h-full min-w-0 flex-col"><b class="serif min-h-0 flex-1 overflow-y-auto break-words text-left text-base leading-5 sm:text-lg">${escapeHtml(book.title)}</b><span class="mt-2 flex min-w-0 shrink-0 items-center justify-between gap-1"><span class="flex shrink-0 items-center gap-1 text-[11px]">${badges}</span><small class="min-w-0 max-w-[35%] truncate text-right text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</small></span></span></button>`;
   }).join('');
 }
 
@@ -109,7 +118,7 @@ export function renderAdmin(state, t) {
   lockButton.textContent = sessionHasPendingResults ? t('locked') : closed ? t('unlock') : t('lock');
   lockButton.disabled = sessionHasPendingResults;
   lockButton.className = `rounded-lg px-4 py-4 text-left text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${closed ? 'bg-[#71363C]' : 'bg-neutral-900'}`;
-  const waitingForDraw = state.pendingResults?.sessionId === currentSession && state.pendingResults?.wildcardCandidates?.length && !state.pendingResults?.winners?.length;
+  const waitingForDraw = isWildcardDrawPending(state);
   document.querySelector('#result-btn').textContent = waitingForDraw ? t('awaitDraw') : state.pendingResults?.sessionId === currentSession ? t(state.settings.showResults ? 'hide' : 'show') : t('prepareResult').replace('{count}',String(maxTopBooks));
   document.querySelector('#result-btn').disabled = !!waitingForDraw;
   document.querySelector('#draw-btn').hidden = !waitingForDraw;

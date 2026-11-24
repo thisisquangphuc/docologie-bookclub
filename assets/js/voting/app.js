@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
+import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -341,7 +341,7 @@ async function finalizeResults() {
   if (!isVotingClosed(state)) {showFeedback(t('closeFirst'));return;}
   const sessionId = state.settings.sessionId || 'initial';
   if (state.pendingResults?.sessionId === sessionId) {
-    if (state.pendingResults.wildcardCandidates?.length && !state.pendingResults.winners?.length) return;
+    if (isWildcardDrawPending(state)) return;
     try {await service.set('settings/showResults',state.settings.showResults !== true);}
     catch (error) {showError(error);}
     return;
@@ -365,7 +365,7 @@ async function finalizeResults() {
 
 async function playWildcardDraw() {
   const pending = state.pendingResults;
-  if (!pending?.wildcardCandidates?.length || pending.winners?.length) return;
+  if (!isWildcardDrawPending(state)) return;
   const button = document.querySelector('#draw-btn');
   button.disabled = true;
   const candidates = pending.wildcardCandidates;
