@@ -85,7 +85,8 @@ function subscribe() {
 }
 
 function render() {
-  const showingResults = !isAdmin && state.settings.showResults === true && state.pendingResults?.winners?.length > 0;
+  const currentSessionId = state.settings.sessionId || 'initial';
+  const showingResults = !isAdmin && state.settings.showResults === true && state.pendingResults?.sessionId === currentSessionId && state.pendingResults?.winners?.length > 0;
   const votingClosed = isVotingClosed(state);
   const closed = !isAdmin && votingClosed;
   updateDocumentTitle();
@@ -369,7 +370,7 @@ async function finalizeResults() {
     const priority = remaining.filter(book => (book.missedCount || 0) >= 2).sort((a,b) => (b.missedCount || 0)-(a.missedCount || 0))[0];
     const result = {sessionId,sessionNumber:state.settings.sessionNumber || 1,sessionDate:state.settings.sessionDate || new Date().toISOString().slice(0,10),maxTopBooks,preparedAt:Date.now(),winners,sessionSelections};
     if (priority) {result.winners.push(makeWinner(priority,'protected'));await completeResults(result);}
-    else {result.wildcardCandidates = remaining.map(book => makeWinner(book,'wild'));await service.set('pending_results',result);showFeedback(t('drawReady'));}
+    else {result.wildcardCandidates = remaining.map(book => makeWinner(book,'wild'));await service.update({'pending_results':result,'settings/showResults':true});showFeedback(t('drawReady'));}
   } catch (error) {showError(error);}
   finally {state.resultInProgress = false;}
 }
