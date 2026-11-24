@@ -113,7 +113,6 @@ function render() {
     }
     const identity = document.querySelector('#identity');
     if (identity) identity.hidden = closed;
-    document.querySelector('#note').hidden = closed;
     document.querySelector('#session-meta').hidden = closed;
     document.querySelector('#slate-heading').hidden = closed;
     document.querySelector('#books').hidden = closed;
@@ -146,10 +145,12 @@ function handleClick(event) {
   else if (action === 'toggle-lock') toggleLock();
   else if (action === 'finalize') finalizeResults();
   else if (action === 'draw-wildcard') playWildcardDraw();
-  else if (action === 'toggle-history') toggleHistoryAccess();
   else if (action === 'start-next') startNextSession();
   else if (action === 'remove-member') removeMember(memberId);
-  else if (action === 'toggle-active') setBookActive(bookId,active === 'true');
+  else if (action === 'add-attendee') toggleAttendance(memberId,true);
+  else if (action === 'remove-attendee') toggleAttendance(memberId,false);
+  else if (action === 'add-book-to-slate') setBookActive(bookId,true);
+  else if (action === 'remove-book-from-slate') setBookActive(bookId,false);
   else if (action === 'remove-book') removeBook(bookId);
   else if (action === 'open-rules') document.querySelector('#rules-dialog')?.showModal();
   else if (action === 'close-rules') document.querySelector('#rules-dialog')?.close();
@@ -157,6 +158,7 @@ function handleClick(event) {
 
 function handleChange(event) {
   if (event.target.matches('[data-action="toggle-attendance"]')) toggleAttendance(event.target.dataset.memberId,event.target.checked);
+  else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
 }
 
 function handleSubmit(event) {
@@ -352,8 +354,8 @@ function showVote() {
 }
 
 function setAdminTab(tab) {
-  state.adminTab = ['overview','books','members','advanced'].includes(tab) ? tab : 'overview';
-  for (const name of ['overview','books','members','advanced']) {
+  state.adminTab = ['overview','books','members','settings','advanced'].includes(tab) ? tab : 'overview';
+  for (const name of ['overview','books','members','settings','advanced']) {
     const section = document.querySelector(`#admin-${name}`);
     if (section) section.hidden = state.adminTab !== name;
   }
