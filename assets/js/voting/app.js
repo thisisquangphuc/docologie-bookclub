@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
+import {createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -33,6 +33,10 @@ function mount() {
   document.querySelector('#admin-mode-root').innerHTML = isAdmin ? `<span class="rounded bg-[#71363C] px-2 py-1 text-[10px] font-bold tracking-widest">${t('adminMode')}</span>` : '';
   document.querySelector('#rules-root').innerHTML = isAdmin ? '' : `<button data-action="open-rules" aria-label="${t('rules')}" title="${t('rules')}" class="rounded-full border border-neutral-600 px-2 py-0.5 text-xs text-neutral-200">?</button>`;
   appRoot.innerHTML = isAdmin ? createAdminMarkup(t,getAppTitle()) : createMemberMarkup(t);
+  if (isAdmin) {
+    document.querySelector('#admin-overview').insertAdjacentHTML('afterbegin',createAdminSessionInfoMarkup(t));
+    document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminOptionSettingsMarkup(t));
+  }
   bindMemberSelect();
   if (isAdmin) setAdminTab(state.adminTab);
 }
@@ -168,6 +172,8 @@ function handleChange(event) {
   if (event.target.matches('[data-action="toggle-attendance"]')) toggleAttendance(event.target.dataset.memberId,event.target.checked);
   else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
   else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
+  else if (event.target.matches('[data-action="toggle-book-deletion"]')) toggleBookDeletion();
+  else if (event.target.matches('#max-top-books')) setMaxTopBooks(event.target.value);
 }
 
 function handleSubmit(event) {
@@ -252,7 +258,7 @@ async function setBookActive(id,active) {
 }
 
 async function removeBook(id) {
-  if (!id || !window.confirm(t('removeConfirm'))) return;
+  if (state.settings.bookDeletionEnabled !== true || !id || !window.confirm(t('deleteBookConfirm'))) return;
   try {await service.removeBook(id);}
   catch (error) {showError(error);}
 }
@@ -275,6 +281,18 @@ async function toggleHistoryAccess() {
 
 async function toggleMemberDeletion() {
   try {await service.set('settings/memberDeletionEnabled',state.settings.memberDeletionEnabled !== true);}
+  catch (error) {showError(error);}
+}
+
+async function toggleBookDeletion() {
+  try {await service.set('settings/bookDeletionEnabled',state.settings.bookDeletionEnabled !== true);}
+  catch (error) {showError(error);}
+}
+
+async function setMaxTopBooks(value) {
+  const maxTopBooks = Number(value);
+  if (![3,4,5].includes(maxTopBooks)) return;
+  try {await service.set('settings/maxTopBooks',maxTopBooks);}
   catch (error) {showError(error);}
 }
 
@@ -318,13 +336,15 @@ async function finalizeResults() {
   }
   const scores = scoreMap();
   const activeBooks = Object.entries(state.books).filter(([,book]) => book.active === true).map(([id,book]) => ({id,...book,total:(scores[id] || 0)+(Number(book.bonusPoints) || 0)})).sort((a,b) => b.total-a.total || (b.missedCount || 0)-(a.missedCount || 0));
-  if (activeBooks.length < 3) {showFeedback(t('needBooks'));return;}
+  const maxTopBooks = Number([3,4,5].includes(Number(state.settings.maxTopBooks)) ? state.settings.maxTopBooks : 3);
+  if (activeBooks.length < maxTopBooks) {showFeedback(t('needTopBooks').replace('{count}',String(maxTopBooks)));return;}
   state.resultInProgress = true;
   try {
-    const winners = activeBooks.slice(0,2).map(book => makeWinner(book,'top'));
-    const remaining = activeBooks.slice(2);
+    const fixedWinners = maxTopBooks - 1;
+    const winners = activeBooks.slice(0,fixedWinners).map(book => makeWinner(book,'top'));
+    const remaining = activeBooks.slice(fixedWinners);
     const priority = remaining.filter(book => (book.missedCount || 0) >= 2).sort((a,b) => (b.missedCount || 0)-(a.missedCount || 0))[0];
-    const result = {sessionId,sessionNumber:state.settings.sessionNumber || 1,sessionDate:state.settings.sessionDate || new Date().toISOString().slice(0,10),preparedAt:Date.now(),winners};
+    const result = {sessionId,sessionNumber:state.settings.sessionNumber || 1,sessionDate:state.settings.sessionDate || new Date().toISOString().slice(0,10),maxTopBooks,preparedAt:Date.now(),winners};
     if (priority) {result.winners.push(makeWinner(priority,'protected'));await completeResults(result);}
     else {result.wildcardCandidates = remaining.map(book => makeWinner(book,'wild'));await service.set('pending_results',result);showFeedback(t('drawReady'));}
   } catch (error) {showError(error);}
@@ -405,8 +425,8 @@ function showVote() {
 }
 
 function setAdminTab(tab) {
-  state.adminTab = ['overview','books','members','settings','advanced'].includes(tab) ? tab : 'overview';
-  for (const name of ['overview','books','members','settings','advanced']) {
+  state.adminTab = ['overview','books','members','settings','audit'].includes(tab) ? tab : 'overview';
+  for (const name of ['overview','books','members','settings','audit']) {
     const section = document.querySelector(`#admin-${name}`);
     if (section) section.hidden = state.adminTab !== name;
   }

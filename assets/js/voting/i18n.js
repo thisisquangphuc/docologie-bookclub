@@ -18,6 +18,10 @@ Object.assign(translations.en,{ballotSummary:'Members who opened the voting page
 Object.assign(translations.de,{ballotSummary:'Mitglieder, die die Abstimmungsseite geöffnet haben',addToSession:'Hinzufügen',resultsKicker:'Abstimmungsergebnisse des Buchclubs'});
 Object.assign(translations.en,{priorityRule:'Priority: passed over at least twice',notSelectedLastSession:'Not selected in the previous session'});
 Object.assign(translations.de,{priorityRule:'Priorität: mindestens zweimal übergangen',notSelectedLastSession:'In der letzten Runde nicht ausgewählt'});
+Object.assign(translations.en,{auditTab:'Audit',maxTopBooks:'Maximum books selected',maxTopBooksHint:'Choose how many books can be selected as winners in each session.',topCount:'Top {count}',needTopBooks:'At least {count} active books are required.',prepareResult:'Prepare top {count}',drawReady:'The ranked places are set. Play the wildcard draw to choose the final book.',sessionId:'Session ID',sessionCreated:'Session date',deleteBook:'Delete',deleteBookConfirm:'Delete this book from the pool?',bookDeletion:'Allow deleting books',bookDeletionHint:'When enabled, show Delete in the book pool.',addToSlate:'Add',removeFromSlate:'Remove'});
+Object.assign(translations.de,{auditTab:'Audit',maxTopBooks:'Maximale Anzahl Bücher',maxTopBooksHint:'Lege fest, wie viele Bücher pro Runde ausgewählt werden können.',topCount:'Top {count}',needTopBooks:'Mindestens {count} Bücher müssen aktiv sein.',prepareResult:'Top {count} vorbereiten',drawReady:'Die ranghöchsten Plätze stehen fest. Lose den letzten Platz per Wildcard aus.',sessionId:'Runden-ID',sessionCreated:'Rundendatum',deleteBook:'Löschen',deleteBookConfirm:'Dieses Buch aus dem Pool löschen?',bookDeletion:'Bücher löschen erlauben',bookDeletionHint:'Wenn aktiviert, erscheint „Löschen“ im Bücherpool.',addToSlate:'Hinzufügen',removeFromSlate:'Entfernen'});
+Object.assign(translations.en,{currentSession:'Current session',sessionCreated:'Created on'});
+Object.assign(translations.de,{currentSession:'Aktuelle Runde',sessionCreated:'Erstellt am'});
 
 export function getLanguage() {
   return localStorage.getItem('bookclub_lang') === 'de' ? 'de' : 'en';
