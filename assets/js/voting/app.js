@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
+import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -12,7 +12,7 @@ const state = {
   language:getLanguage(),
   settings:{},books:{},roster:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
   memberId:sessionStorage.getItem('bookclub_member_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
-  subscriptions:[],resultInProgress:false,loaded:{},view:'vote'
+  subscriptions:[],resultInProgress:false,drawInProgress:false,drawTicker:null,loaded:{},view:'vote'
 };
 const t = key => translate(state.language,key);
 
@@ -51,7 +51,7 @@ function bindEvents() {
     render();
   });
   document.addEventListener('change',handleChange);
-  window.addEventListener('pagehide', () => state.subscriptions.forEach(stop => stop()));
+  window.addEventListener('pagehide', () => {state.subscriptions.forEach(stop => stop());if (state.drawTicker !== null) window.clearInterval(state.drawTicker);});
 }
 
 function bindMemberSelect() {
@@ -109,6 +109,7 @@ function render() {
   if (state.view === 'history') {
     document.querySelector('#cast-bar').hidden = true;
     renderHistory(state,t);
+    syncWildcardTicker();
     return;
   }
   if (isAdmin) {
@@ -145,6 +146,14 @@ function render() {
   if (isAdmin) document.querySelector('#cast-bar').hidden = true;
   document.querySelector('#selected').textContent = String(state.draft.length);
   renderHistory(state,t);
+  syncWildcardTicker();
+}
+
+function syncWildcardTicker() {
+  renderWildcardDraw(state,t);
+  const shouldTick = isWildcardDrawPending(state) && Number(state.pendingResults?.drawStartedAt) > 0;
+  if (shouldTick && state.drawTicker === null) state.drawTicker = window.setInterval(() => renderWildcardDraw(state,t),110);
+  else if (!shouldTick && state.drawTicker !== null) {window.clearInterval(state.drawTicker);state.drawTicker = null;}
 }
 
 function handleClick(event) {
@@ -347,7 +356,9 @@ async function finalizeResults() {
     return;
   }
   const scores = scoreMap();
-  const activeBooks = Object.entries(state.books).filter(([,book]) => book.active === true).map(([id,book]) => ({id,...book,total:(scores[id] || 0)+(Number(book.bonusPoints) || 0)})).sort((a,b) => b.total-a.total || (b.missedCount || 0)-(a.missedCount || 0));
+  const slateBooks = Object.entries(state.books).filter(([,book]) => book.active === true).map(([id,book]) => ({id,...book,voteCount:scores[id] || 0,bonusPoints:Number(book.bonusPoints) || 0,missedCount:Number(book.missedCount) || 0,total:(scores[id] || 0)+(Number(book.bonusPoints) || 0)}));
+  const activeBooks = [...slateBooks].sort((a,b) => b.total-a.total || b.missedCount-a.missedCount || String(a.title).localeCompare(String(b.title)));
+  const sessionSelections = [...slateBooks].sort((a,b) => String(a.title).localeCompare(String(b.title))).map(makeSessionSelection);
   const maxTopBooks = Number([3,4,5].includes(Number(state.settings.maxTopBooks)) ? state.settings.maxTopBooks : 3);
   if (activeBooks.length < maxTopBooks) {showFeedback(t('needTopBooks').replace('{count}',String(maxTopBooks)));return;}
   state.resultInProgress = true;
@@ -356,7 +367,7 @@ async function finalizeResults() {
     const winners = activeBooks.slice(0,fixedWinners).map(book => makeWinner(book,'top'));
     const remaining = activeBooks.slice(fixedWinners);
     const priority = remaining.filter(book => (book.missedCount || 0) >= 2).sort((a,b) => (b.missedCount || 0)-(a.missedCount || 0))[0];
-    const result = {sessionId,sessionNumber:state.settings.sessionNumber || 1,sessionDate:state.settings.sessionDate || new Date().toISOString().slice(0,10),maxTopBooks,preparedAt:Date.now(),winners};
+    const result = {sessionId,sessionNumber:state.settings.sessionNumber || 1,sessionDate:state.settings.sessionDate || new Date().toISOString().slice(0,10),maxTopBooks,preparedAt:Date.now(),winners,sessionSelections};
     if (priority) {result.winners.push(makeWinner(priority,'protected'));await completeResults(result);}
     else {result.wildcardCandidates = remaining.map(book => makeWinner(book,'wild'));await service.set('pending_results',result);showFeedback(t('drawReady'));}
   } catch (error) {showError(error);}
@@ -365,21 +376,19 @@ async function finalizeResults() {
 
 async function playWildcardDraw() {
   const pending = state.pendingResults;
-  if (!isWildcardDrawPending(state)) return;
-  const button = document.querySelector('#draw-btn');
-  button.disabled = true;
+  if (!isWildcardDrawPending(state) || state.drawInProgress) return;
+  state.drawInProgress = true;
+  render();
   const candidates = pending.wildcardCandidates;
   try {
-    for (let step = 0; step < 20; step++) {
-      document.querySelector('#draw-status').textContent = candidates[step % candidates.length].title;
-      await new Promise(resolve => window.setTimeout(resolve,90 + step * 7));
-    }
+    const drawStartedAt = Date.now();
+    await service.set('pending_results/drawStartedAt',drawStartedAt);
+    while (Date.now() - drawStartedAt < 2700) await new Promise(resolve => window.setTimeout(resolve,110));
     const index = uniformRandomIndex(candidates.length), chosen = candidates[index];
-    const {wildcardCandidates,...storedResult} = pending;
-    const result = {...storedResult,winners:[...pending.winners,chosen],drawnAt:Date.now(),drawnDate:new Date().toISOString().slice(0,10)};
-    if (await completeResults(result)) document.querySelector('#draw-status').textContent = `${t('drawn')}: ${chosen.title} · ${formatDate(result.drawnAt)}`;
+    const result = {...pending,drawStartedAt,winners:[...pending.winners,chosen],drawnAt:Date.now(),drawnDate:new Date().toISOString().slice(0,10)};
+    await completeResults(result);
   } catch (error) {showError(error);}
-  finally {button.disabled = false;}
+  finally {state.drawInProgress = false;render();}
 }
 
 function uniformRandomIndex(length) {
@@ -459,7 +468,11 @@ function scoreMap() {
 }
 
 function makeWinner(book, winReason) {
-  return {id:book.id,title:book.title,proposer:book.proposer,totalScore:book.total,winReason};
+  return {id:book.id,title:book.title,proposer:book.proposer,voteCount:Number(book.voteCount) || 0,bonusPoints:Number(book.bonusPoints) || 0,totalScore:Number(book.total) || 0,winReason};
+}
+
+function makeSessionSelection(book) {
+  return {id:book.id,title:book.title,proposer:book.proposer,voteCount:Number(book.voteCount) || 0,bonusPoints:Number(book.bonusPoints) || 0,missedCount:Number(book.missedCount) || 0,totalScore:Number(book.total) || 0};
 }
 
 function formatDate(value) {
