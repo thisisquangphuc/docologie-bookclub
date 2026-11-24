@@ -16,6 +16,8 @@ Object.assign(translations.de, {
 
 Object.assign(translations.en,{ballotSummary:'Members who opened the voting page',addToSession:'Add'});
 Object.assign(translations.de,{ballotSummary:'Mitglieder, die die Abstimmungsseite geöffnet haben',addToSession:'Hinzufügen',resultsKicker:'Abstimmungsergebnisse des Buchclubs'});
+Object.assign(translations.en,{priorityRule:'Priority: passed over at least twice',notSelectedLastSession:'Not selected in the previous session'});
+Object.assign(translations.de,{priorityRule:'Priorität: mindestens zweimal übergangen',notSelectedLastSession:'In der letzten Runde nicht ausgewählt'});
 
 export function getLanguage() {
   return localStorage.getItem('bookclub_lang') === 'de' ? 'de' : 'en';

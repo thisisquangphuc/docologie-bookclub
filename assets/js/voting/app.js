@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminMarkup, createMemberMarkup, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
+import {createAdminMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -81,16 +81,17 @@ function subscribe() {
 
 function render() {
   const showingResults = !isAdmin && state.settings.showResults === true && state.pendingResults?.winners?.length > 0;
-  const closed = !isAdmin && (state.settings.locked === true || showingResults);
+  const votingClosed = isVotingClosed(state);
+  const closed = !isAdmin && votingClosed;
   updateDocumentTitle();
   const status = document.querySelector('#status');
-  status.textContent = state.settings.locked ? t('locked') : t('open');
-  status.className = `text-xs ${state.settings.locked ? 'text-[#C98D93]' : 'text-neutral-300'}`;
-  document.querySelector('#counter').hidden = isAdmin || !state.memberId || closed;
-  document.querySelector('#main-nav').hidden = closed;
-  document.querySelector('#language').parentElement.hidden = closed;
-  document.querySelector('#rules-root').hidden = closed;
-  document.querySelector('#status').hidden = closed;
+  status.textContent = votingClosed ? t('locked') : t('open');
+  status.className = `text-xs font-semibold ${votingClosed ? 'text-[#E7B8BC]' : 'text-neutral-300'}`;
+  document.querySelector('#counter').hidden = isAdmin || !state.memberId || closed || showingResults;
+  document.querySelector('#main-nav').hidden = closed || showingResults;
+  document.querySelector('#language').parentElement.hidden = closed || showingResults;
+  document.querySelector('#rules-root').hidden = closed || showingResults;
+  document.querySelector('#status').hidden = !isAdmin && showingResults;
   document.querySelector('#nav-history').hidden = !isAdmin && state.settings.membersCanViewHistory !== true;
   if (state.memberId && state.loaded.roster && state.loaded.attendees && (!state.roster[state.memberId] || state.attendees[state.memberId] !== true)) clearMember();
   recordMemberEntry();
@@ -203,7 +204,7 @@ function clearMember() {
 }
 
 function toggleDraft(id) {
-  if (!state.memberId || state.settings.locked) return;
+  if (!state.memberId || isVotingClosed(state)) return;
   const index = state.draft.indexOf(id);
   if (index >= 0) state.draft.splice(index,1);
   else if (state.draft.length < 3) state.draft.push(id);
@@ -212,7 +213,7 @@ function toggleDraft(id) {
 }
 
 async function castVote() {
-  if (!state.memberId || state.attendees[state.memberId] !== true || state.settings.locked || state.draft.length < 1 || state.draft.length > 3) return;
+  if (!state.memberId || state.attendees[state.memberId] !== true || isVotingClosed(state) || state.draft.length < 1 || state.draft.length > 3) return;
   const sessionId = state.settings.sessionId || 'initial';
   try {
     await service.castBallot(state.memberId, old => {
@@ -262,7 +263,8 @@ async function toggleAttendance(id,attending) {
 }
 
 async function toggleLock() {
-  try {await service.set('settings/locked',!state.settings.locked);}
+  if (state.pendingResults?.sessionId === (state.settings.sessionId || 'initial')) return;
+  try {await service.set('settings/locked',!isVotingClosed(state));}
   catch (error) {showError(error);}
 }
 
@@ -306,7 +308,7 @@ function recordMemberEntry() {
 
 async function finalizeResults() {
   if (state.resultInProgress) return;
-  if (!state.settings.locked) {showFeedback(t('closeFirst'));return;}
+  if (!isVotingClosed(state)) {showFeedback(t('closeFirst'));return;}
   const sessionId = state.settings.sessionId || 'initial';
   if (state.pendingResults?.sessionId === sessionId) {
     if (state.pendingResults.wildcardCandidates?.length && !state.pendingResults.winners?.length) return;
@@ -365,7 +367,10 @@ async function completeResults(result) {
   };
   Object.entries(state.books).forEach(([id,book]) => {
     const wasOnSlate = book.active === true;
-    if (wasOnSlate) updates[`books_pool/${id}/lastStatus`] = winningIds.has(id) ? 'selected' : 'carried';
+    if (wasOnSlate) {
+      updates[`books_pool/${id}/lastStatus`] = winningIds.has(id) ? 'selected' : 'carried';
+      updates[`books_pool/${id}/lastSessionNumber`] = Number(result.sessionNumber) || 1;
+    }
     updates[`books_pool/${id}/bonusPoints`] = winningIds.has(id) ? 0 : (Number(book.bonusPoints) || 0) + (wasOnSlate ? 1 : 0);
     updates[`books_pool/${id}/missedCount`] = winningIds.has(id) ? 0 : (Number(book.missedCount) || 0) + (wasOnSlate ? 1 : 0);
   });

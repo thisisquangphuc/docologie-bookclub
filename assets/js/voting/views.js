@@ -7,12 +7,17 @@ export function memberName(roster, id) {
   return typeof value === 'string' ? value : value?.name || '';
 }
 
+export function isVotingClosed(state) {
+  const sessionId = state.settings.sessionId || 'initial';
+  return state.settings.locked === true || state.pendingResults?.sessionId === sessionId;
+}
+
 export function createMemberMarkup(t) {
   return `<section id="member-vote-view" class="space-y-5">
     <div id="session-meta" class="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-500"><span id="session-label"></span><span id="session-date"></span></div>
     <div class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3 sm:grid-cols-[15rem_minmax(0,1fr)] sm:gap-4">
       <div id="identity" class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><label for="member-select" class="mb-2 block text-sm font-semibold">${t('identify')}</label><input id="member-select" list="member-options" autocomplete="off" class="w-full min-w-0 rounded border bg-[#F7F6F2] px-2.5 py-2.5 text-sm sm:px-3" placeholder="${t('identifyPlaceholder')}"><datalist id="member-options"></datalist></div>
-      <aside class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><div class="flex items-center justify-between gap-2"><h2 class="serif text-base sm:text-lg">${t('memberBallot')}</h2><span id="member-selection-count" class="shrink-0 rounded-full border px-2 py-1 text-xs tabular-nums">0 / 3</span></div><ul id="member-selection-list" class="mt-2 space-y-1 text-sm text-neutral-600"></ul><p id="member-selection-empty" class="mt-2 text-xs text-neutral-500">${t('selectNameForSummary')}</p></aside>
+      <aside class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><div class="flex items-center justify-between gap-2"><h2 class="serif text-base sm:text-lg">${t('memberBallot')}</h2><span id="member-selection-count" class="shrink-0 rounded-full border px-2 py-1 text-xs tabular-nums">0 / 3</span></div><ul id="member-selection-list" class="mt-2 grid gap-2 text-sm text-neutral-700"></ul><p id="member-selection-empty" class="mt-2 text-xs text-neutral-500">${t('selectNameForSummary')}</p></aside>
     </div>
     <div id="slate-heading" class="flex items-end justify-between"><h2 class="serif text-2xl">${t('slate')}</h2><span id="book-count" class="text-sm text-neutral-500"></span></div>
     <div id="books" class="space-y-3"></div>
@@ -45,9 +50,11 @@ export function renderIdentity(state, t) {
   select.disabled = entries.length === 0;
   select.placeholder = entries.length ? t('identifyPlaceholder') : t('noAttendees');
   select.value = state.memberId && state.attendees[state.memberId] ? memberName(state.roster, state.memberId) : '';
-  const chosenBooks = state.draft.map(id => state.books[id]).filter(Boolean);
+  const sessionId = state.settings.sessionId || 'initial';
+  const savedBooks = state.memberId && state.ballots[state.memberId]?.sessionId === sessionId ? state.ballots[state.memberId].books || [] : [];
+  const chosenBooks = savedBooks.map(id => state.books[id]).filter(Boolean);
   document.querySelector('#member-selection-count').textContent = `${chosenBooks.length} / 3`;
-  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="truncate">· ${escapeHtml(book.title)}</li>`).join('');
+  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="min-w-0 rounded-lg border border-[#E2E0D8] bg-[#F7F6F2] px-3 py-2"><span class="block break-words font-medium">${escapeHtml(book.title)}</span><span class="mt-1 block truncate text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</span></li>`).join('');
   document.querySelector('#member-selection-empty').hidden = chosenBooks.length > 0;
   document.querySelector('#member-selection-empty').textContent = state.memberId ? t('noBooksSelected') : entries.length ? t('selectNameForSummary') : t('noAttendees');
 }
@@ -59,9 +66,14 @@ export function renderBooks(state, t) {
   document.querySelector('#book-count').textContent = String(active.length);
   if (!state.memberId || state.attendees[state.memberId] !== true) { target.innerHTML = `<p class="rounded-xl border bg-white p-8 text-center text-sm text-neutral-500">${Object.values(state.attendees).some(Boolean) ? t('chooseHint') : t('noAttendees')}</p>`; return; }
   if (!active.length) { target.innerHTML = `<p class="rounded-xl border bg-white p-8 text-center text-sm text-neutral-500">${t('emptySlate')}</p>`; return; }
+  const closed = isVotingClosed(state);
+  target.className = 'grid grid-cols-2 auto-rows-[11rem] gap-3';
   target.innerHTML = active.map(book => {
-    const selected = state.draft.includes(book.id), disabled = state.settings.locked || (!selected && state.draft.length >= 3);
-    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="w-full rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-5 text-left ${state.settings.locked ? 'pointer-events-none opacity-50' : ''}"><span class="flex items-start justify-between gap-3"><span class="min-w-0"><b class="serif block line-clamp-2 text-xl">${escapeHtml(book.title)}</b><small class="block pt-1 text-neutral-500">${escapeHtml(book.proposer || '')}</small></span><span class="flex shrink-0 gap-1 text-xs">${book.bonusPoints ? `<span title="${t('bonusRule')}" aria-label="${t('bonusRule')}" class="rounded-full border px-2 py-1">✚ ${book.bonusPoints}</span>` : ''}${book.missedCount ? `<span title="${t('missedRule')}" aria-label="${t('missedRule')}" class="rounded-full border px-2 py-1">↻ ${book.missedCount}</span>` : ''}</span></span></button>`;
+    const selected = state.draft.includes(book.id), disabled = closed || (!selected && state.draft.length >= 3);
+    const priority = Number(book.missedCount) >= 2;
+    const notSelectedLastSession = book.lastStatus === 'carried' && Number(book.lastSessionNumber) === Number(state.settings.sessionNumber || 1) - 1;
+    const badges = `${Number(book.bonusPoints) > 0 ? `<span title="${t('bonusRule')}" aria-label="${t('bonusRule')}" class="rounded-full border px-2 py-1">+${Number(book.bonusPoints)}</span>` : ''}${Number(book.missedCount) > 0 ? `<span title="${t(priority ? 'priorityRule' : 'missedRule')}" aria-label="${t(priority ? 'priorityRule' : 'missedRule')}" class="rounded-full border px-2 py-1">↻ ${Number(book.missedCount)}</span>` : ''}${notSelectedLastSession ? `<span title="${t('notSelectedLastSession')}" aria-label="${t('notSelectedLastSession')}" class="rounded-full border px-2 py-1">↪</span>` : ''}`;
+    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="h-full min-w-0 rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-3 text-left ${closed ? 'pointer-events-none opacity-50' : ''}"><span class="grid h-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><span class="flex min-h-0 min-w-0 flex-col"><b class="serif min-h-0 flex-1 overflow-y-auto break-words text-left text-base leading-5 sm:text-lg">${escapeHtml(book.title)}</b><small class="mt-2 block shrink-0 break-words text-right text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</small></span><span class="flex flex-col items-end gap-1 text-[11px]">${badges}</span></span></button>`;
   }).join('');
 }
 
@@ -69,14 +81,17 @@ export function renderAdmin(state, t) {
   const current = Object.fromEntries(Object.entries(state.ballots).filter(([, ballot]) => ballot?.sessionId === (state.settings.sessionId || 'initial')));
   const participants = Object.entries(state.roster).sort((a, b) => memberName(state.roster, a[0]).localeCompare(memberName(state.roster, b[0])));
   const attendees = participants.filter(([id]) => state.attendees[id] === true);
+  const currentSession = state.settings.sessionId || 'initial';
+  const sessionHasPendingResults = state.pendingResults?.sessionId === currentSession;
   const status = document.querySelector('#admin-status');
   if (!status) return;
-  status.textContent = state.settings.locked ? t('locked') : t('open');
-  status.className = `rounded-full border px-3 py-1.5 text-sm ${state.settings.locked ? 'border-[#71363C] bg-[#71363C] text-white' : 'border-neutral-300 bg-neutral-100 text-neutral-900'}`;
+  const closed = isVotingClosed(state);
+  status.textContent = closed ? t('locked') : t('open');
+  status.className = `rounded-full border px-3 py-1.5 text-sm ${closed ? 'border-[#71363C] bg-[#71363C] text-white' : 'border-neutral-300 bg-neutral-100 text-neutral-900'}`;
   const lockButton = document.querySelector('#lock-btn');
-  lockButton.textContent = state.settings.locked ? t('unlock') : t('lock');
-  lockButton.className = `rounded-lg px-4 py-4 text-left text-sm font-semibold text-white ${state.settings.locked ? 'bg-[#71363C]' : 'bg-neutral-900'}`;
-  const currentSession = state.settings.sessionId || 'initial';
+  lockButton.textContent = sessionHasPendingResults ? t('locked') : closed ? t('unlock') : t('lock');
+  lockButton.disabled = sessionHasPendingResults;
+  lockButton.className = `rounded-lg px-4 py-4 text-left text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${closed ? 'bg-[#71363C]' : 'bg-neutral-900'}`;
   const waitingForDraw = state.pendingResults?.sessionId === currentSession && state.pendingResults?.wildcardCandidates?.length && !state.pendingResults?.winners?.length;
   document.querySelector('#result-btn').textContent = waitingForDraw ? t('awaitDraw') : state.pendingResults?.sessionId === currentSession ? t(state.settings.showResults ? 'hide' : 'show') : t('prepareResult');
   document.querySelector('#result-btn').disabled = !!waitingForDraw;
