@@ -1,5 +1,10 @@
 # Agent Rules — Docologie Book Club
 
+## Debate Workshop Reference
+
+- For any design or content related to the club's debate workshop, consult [DEBATE_WORKSHOP_RULES.md](DEBATE_WORKSHOP_RULES.md) and use it as the source of truth for the rounds, speaking rules, and closing reflection.
+- Preserve Round 2, item 3 as unspecified unless the user supplies the missing rule.
+
 ## Member View: Clean, Distraction-Free UX
 
 Apply these rules whenever changing the member-facing experience.
