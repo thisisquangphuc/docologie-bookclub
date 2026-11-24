@@ -9,12 +9,17 @@ export function createVotingService(database) {
   return {
     observe,
     addMember: member => database.ref('member_roster').push().set(member),
-    removeMember: id => database.ref().update({[`member_roster/${id}`]:null,[`current_session_members/${id}`]:null,[`current_ballots/${id}`]:null}),
+    removeMember: id => database.ref().update({[`member_roster/${id}`]:null,[`current_session_members/${id}`]:null,[`current_session_presence/${id}`]:null,[`current_ballots/${id}`]:null}),
     addBook: book => database.ref('books_pool').push().set(book),
     setBookActive: (id, active) => database.ref(`books_pool/${id}/active`).set(active),
     removeBook: id => database.ref(`books_pool/${id}`).remove(),
-    setMemberAttendance: (id, attending) => attending ? database.ref(`current_session_members/${id}`).set(true) : database.ref().update({[`current_session_members/${id}`]:null,[`current_ballots/${id}`]:null}),
+    setMemberAttendance: (id, attending) => attending ? database.ref(`current_session_members/${id}`).set(true) : database.ref().update({[`current_session_members/${id}`]:null,[`current_session_presence/${id}`]:null,[`current_ballots/${id}`]:null}),
     castBallot: (id, makeBallot) => database.ref(`current_ballots/${id}`).transaction(makeBallot),
+    recordMemberEntry: (id, sessionId, clientId) => database.ref(`current_session_presence/${id}`).transaction(old => {
+      const previous = old?.sessionId === sessionId ? old : null;
+      const now = Date.now();
+      return {sessionId,firstEnteredAt:previous?.firstEnteredAt || now,lastEnteredAt:now,clientIds:[...new Set([...(previous?.clientIds || []),clientId])]};
+    }),
     set: (path, value) => database.ref(path).set(value),
     update: values => database.ref().update(values),
     nextHistoryKey: () => database.ref('history').push().key

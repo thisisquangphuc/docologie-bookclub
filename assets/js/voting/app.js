@@ -10,8 +10,8 @@ const clientId = getClientId();
 const appRoot = document.querySelector('#app');
 const state = {
   language:getLanguage(),
-  settings:{},books:{},roster:{},attendees:{},ballots:{},history:{},pendingResults:null,
-  memberId:sessionStorage.getItem('bookclub_member_id') || '',draft:[],initialDraftLoaded:false,adminTab:'overview',
+  settings:{},books:{},roster:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
+  memberId:sessionStorage.getItem('bookclub_member_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
   subscriptions:[],resultInProgress:false,loaded:{},view:'vote'
 };
 const t = key => translate(state.language,key);
@@ -22,8 +22,8 @@ subscribe();
 
 function mount() {
   document.documentElement.lang = state.language;
-  document.querySelector('#page-title').textContent = t('title');
-  document.title = t('title');
+  document.querySelector('#page-title').textContent = getAppTitle();
+  updateDocumentTitle();
   document.querySelector('#counter span').textContent = t('selected');
   document.querySelector('#nav-vote').textContent = t('current');
   document.querySelector('#nav-history').textContent = t('archive');
@@ -32,7 +32,7 @@ function mount() {
   document.querySelector('#language').value = state.language;
   document.querySelector('#admin-mode-root').innerHTML = isAdmin ? `<span class="rounded bg-[#71363C] px-2 py-1 text-[10px] font-bold tracking-widest">${t('adminMode')}</span>` : '';
   document.querySelector('#rules-root').innerHTML = isAdmin ? '' : `<button data-action="open-rules" aria-label="${t('rules')}" title="${t('rules')}" class="rounded-full border border-neutral-600 px-2 py-0.5 text-xs text-neutral-200">?</button>`;
-  appRoot.innerHTML = isAdmin ? createAdminMarkup(t) : createMemberMarkup(t);
+  appRoot.innerHTML = isAdmin ? createAdminMarkup(t,getAppTitle()) : createMemberMarkup(t);
   bindMemberSelect();
   if (isAdmin) setAdminTab(state.adminTab);
 }
@@ -74,12 +74,15 @@ function subscribe() {
   observe('member_roster','roster');
   observe('current_session_members','attendees');
   observe('current_ballots','ballots');
+  observe('current_session_presence','presence');
   observe('history','history');
   state.subscriptions.push(service.observe('pending_results',value => {state.pendingResults = Object.keys(value).length ? value : null;render();},showError));
 }
 
 function render() {
-  const closed = !isAdmin && state.settings.locked === true;
+  const showingResults = !isAdmin && state.settings.showResults === true && state.pendingResults?.winners?.length > 0;
+  const closed = !isAdmin && (state.settings.locked === true || showingResults);
+  updateDocumentTitle();
   const status = document.querySelector('#status');
   status.textContent = state.settings.locked ? t('locked') : t('open');
   status.className = `text-xs ${state.settings.locked ? 'text-[#C98D93]' : 'text-neutral-300'}`;
@@ -90,6 +93,7 @@ function render() {
   document.querySelector('#status').hidden = closed;
   document.querySelector('#nav-history').hidden = !isAdmin && state.settings.membersCanViewHistory !== true;
   if (state.memberId && state.loaded.roster && state.loaded.attendees && (!state.roster[state.memberId] || state.attendees[state.memberId] !== true)) clearMember();
+  recordMemberEntry();
   if (closed) state.view = 'vote';
   if (state.view === 'history' && !isAdmin && state.settings.membersCanViewHistory !== true) state.view = 'vote';
   document.querySelector('#history-view').hidden = state.view !== 'history';
@@ -107,28 +111,31 @@ function render() {
     document.querySelector('#session-meta')?.remove();
     renderAdmin(state,t);
   } else {
-    if (state.memberId && !state.initialDraftLoaded && state.loaded.ballots && state.loaded.books) {
+    if (state.memberId && state.loaded.ballots && state.loaded.books && !state.draftDirty) {
       state.draft = [...(currentBallots()[state.memberId]?.books || [])].filter(id => state.books[id]?.active);
       state.initialDraftLoaded = true;
     }
-    const identity = document.querySelector('#identity');
-    if (identity) identity.hidden = closed;
-    document.querySelector('#session-meta').hidden = closed;
-    document.querySelector('#slate-heading').hidden = closed;
-    document.querySelector('#books').hidden = closed;
-    document.querySelector('#voted').hidden = closed || !currentBallots()[state.memberId];
-    document.querySelector('#voted').textContent = t('saved');
+    document.querySelector('#member-vote-view').hidden = showingResults;
+    document.querySelector('#session-meta').hidden = closed || showingResults;
+    document.querySelector('#slate-heading').hidden = showingResults;
+    document.querySelector('#books').hidden = showingResults;
     renderIdentity(state,t);
     renderBooks(state,t);
     document.querySelector('#session-label').textContent = `${t('session')} ${state.settings.sessionNumber || 1}`;
     document.querySelector('#session-date').textContent = formatDate(state.settings.sessionDate || Date.now());
-    renderResults(state,t,closed);
+    renderResults(state,t);
+    const ballot = state.memberId ? currentBallots()[state.memberId] : null;
+    const footerMessages = [];
+    if (ballot) footerMessages.push(t('saved'));
+    if (closed || showingResults) footerMessages.push(t('votingClosed'));
+    else footerMessages.push(state.draft.length ? t('ready') : t('select'));
+    document.querySelector('#cast-bar').hidden = false;
+    document.querySelector('#cast-hint').textContent = footerMessages.join(' · ');
+    document.querySelector('#cast-label').textContent = closed || showingResults ? t('votingClosed') : ballot ? t('edit') : t('cast');
+    document.querySelector('#cast-count').textContent = String(state.draft.length);
+    document.querySelector('#cast-btn').disabled = closed || showingResults || !state.memberId || state.draft.length < 1;
   }
-  document.querySelector('#cast-bar').hidden = isAdmin || closed || !state.memberId || state.settings.locked === true;
-  document.querySelector('#cast-label').textContent = currentBallots()[state.memberId] ? t('edit') : t('cast');
-  document.querySelector('#cast-hint').textContent = state.draft.length ? t('ready') : t('select');
-  document.querySelector('#cast-count').textContent = String(state.draft.length);
-  document.querySelector('#cast-btn').disabled = state.draft.length < 1;
+  if (isAdmin) document.querySelector('#cast-bar').hidden = true;
   document.querySelector('#selected').textContent = String(state.draft.length);
   renderHistory(state,t);
 }
@@ -159,17 +166,19 @@ function handleClick(event) {
 function handleChange(event) {
   if (event.target.matches('[data-action="toggle-attendance"]')) toggleAttendance(event.target.dataset.memberId,event.target.checked);
   else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
+  else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
 }
 
 function handleSubmit(event) {
   if (event.target.id === 'member-form') {event.preventDefault();addMember();}
   else if (event.target.id === 'book-form') {event.preventDefault();addBook();}
+  else if (event.target.id === 'title-form') {event.preventDefault();saveAppTitle();}
 }
 
 function chooseMember(event) {
   const match = findMemberByName(event.target.value);
   if (match) chooseMemberId(match[0]);
-  else {clearMember();render();document.querySelector('#identity-note').textContent = t('memberRequired');}
+  else {clearMember();render();showFeedback(t('memberRequired'));}
 }
 
 function findMemberByName(value) {
@@ -180,8 +189,10 @@ function chooseMemberId(id) {
   if (!state.roster[id] || state.attendees[id] !== true) return;
   state.memberId = id;
   state.initialDraftLoaded = true;
+  state.draftDirty = false;
   sessionStorage.setItem('bookclub_member_id',id);
   state.draft = [...(currentBallots()[id]?.books || [])].filter(bookId => state.books[bookId]?.active);
+  state.draftDirty = false;
   render();
 }
 
@@ -196,6 +207,7 @@ function toggleDraft(id) {
   const index = state.draft.indexOf(id);
   if (index >= 0) state.draft.splice(index,1);
   else if (state.draft.length < 3) state.draft.push(id);
+  state.draftDirty = true;
   render();
 }
 
@@ -208,6 +220,7 @@ async function castVote() {
       const clientIds = [...new Set([...(previous?.clientIds || []),clientId])];
       return {memberName:memberName(state.roster,state.memberId),books:[...state.draft],sessionId,clientIds,duplicateWarning:clientIds.length > 1,updatedAt:Date.now()};
     });
+    state.draftDirty = false;
   } catch (error) {showError(error);}
 }
 
@@ -220,7 +233,7 @@ async function addMember() {
 }
 
 async function removeMember(id) {
-  if (!id || !window.confirm(t('removeMemberConfirm'))) return;
+  if (state.settings.memberDeletionEnabled !== true || !id || !window.confirm(t('removeMemberConfirm'))) return;
   try {await service.removeMember(id);}
   catch (error) {showError(error);}
 }
@@ -256,6 +269,39 @@ async function toggleLock() {
 async function toggleHistoryAccess() {
   try {await service.set('settings/membersCanViewHistory',state.settings.membersCanViewHistory !== true);}
   catch (error) {showError(error);}
+}
+
+async function toggleMemberDeletion() {
+  try {await service.set('settings/memberDeletionEnabled',state.settings.memberDeletionEnabled !== true);}
+  catch (error) {showError(error);}
+}
+
+async function saveAppTitle() {
+  const title = document.querySelector('#app-title-input').value.trim();
+  if (!title) {showFeedback(t('titleRequired'));return;}
+  try {await service.set('settings/appTitle',title);showFeedback(t('titleSaved'));}
+  catch (error) {showError(error);}
+}
+
+function getAppTitle() {
+  return String(state.settings.appTitle || '').trim() || t('title');
+}
+
+function updateDocumentTitle() {
+  const title = getAppTitle();
+  document.querySelector('#page-title').textContent = title;
+  document.title = isAdmin ? `${title} - Admin` : title;
+}
+
+function recordMemberEntry() {
+  const sessionId = state.settings.sessionId || 'initial';
+  if (isAdmin || !state.memberId || state.attendees[state.memberId] !== true || !state.loaded.presence) return;
+  const attemptKey = `${sessionId}:${state.memberId}`;
+  const existing = state.presence[state.memberId];
+  if (existing?.sessionId === sessionId && existing.clientIds?.includes(clientId)) {state.presenceAttemptKey = attemptKey;return;}
+  if (state.presenceAttemptKey === attemptKey) return;
+  state.presenceAttemptKey = attemptKey;
+  service.recordMemberEntry(state.memberId,sessionId,clientId).catch(error => {state.presenceAttemptKey = '';showError(error);});
 }
 
 async function finalizeResults() {
@@ -331,7 +377,7 @@ async function startNextSession() {
   if (!state.pendingResults?.winners?.length || state.pendingResults.sessionId !== (state.settings.sessionId || 'initial')) return;
   if (!window.confirm(t('confirm'))) return;
   const nextSettings = {...state.settings,sessionId:crypto.randomUUID(),sessionNumber:(Number(state.settings.sessionNumber) || Object.keys(state.history).length || 1)+1,sessionDate:new Date().toISOString().slice(0,10),locked:false,showResults:false,archivedSessionId:null};
-  const updates = {settings:nextSettings,current_ballots:null,current_session_members:null,pending_results:null};
+  const updates = {settings:nextSettings,current_ballots:null,current_session_members:null,current_session_presence:null,pending_results:null};
   Object.keys(state.books).forEach(id => updates[`books_pool/${id}/active`] = false);
   try {await service.update(updates);state.draft = [];showVote();setAdminTab('overview');}
   catch (error) {showError(error);}
