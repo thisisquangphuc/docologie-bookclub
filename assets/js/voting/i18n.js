@@ -22,6 +22,8 @@ Object.assign(translations.en,{auditTab:'Audit',maxTopBooks:'Maximum books selec
 Object.assign(translations.de,{auditTab:'Audit',maxTopBooks:'Maximale Anzahl Bücher',maxTopBooksHint:'Lege fest, wie viele Bücher pro Runde ausgewählt werden können.',topCount:'Top {count}',needTopBooks:'Mindestens {count} Bücher müssen aktiv sein.',prepareResult:'Top {count} vorbereiten',drawReady:'Die ranghöchsten Plätze stehen fest. Lose den letzten Platz per Wildcard aus.',sessionId:'Runden-ID',sessionCreated:'Rundendatum',deleteBook:'Löschen',deleteBookConfirm:'Dieses Buch aus dem Pool löschen?',bookDeletion:'Bücher löschen erlauben',bookDeletionHint:'Wenn aktiviert, erscheint „Löschen“ im Bücherpool.',addToSlate:'Hinzufügen',removeFromSlate:'Entfernen'});
 Object.assign(translations.en,{currentSession:'Current session',sessionCreated:'Created on'});
 Object.assign(translations.de,{currentSession:'Aktuelle Runde',sessionCreated:'Erstellt am'});
+Object.assign(translations.en,{requireFullBallot:'Require all three books',requireFullBallotHint:'On: members must choose exactly 3 books to vote. Off: members may choose 1 to 3.',selectAllThree:'Choose all 3 books before submitting.',welcomeMember:'Welcome, {name}!'});
+Object.assign(translations.de,{requireFullBallot:'Alle drei Bücher voraussetzen',requireFullBallotHint:'An: Mitglieder müssen genau 3 Bücher wählen. Aus: 1 bis 3 Bücher sind erlaubt.',selectAllThree:'Wähle alle 3 Bücher aus, bevor du abstimmst.',welcomeMember:'Willkommen, {name}!'});
 
 export function getLanguage() {
   return localStorage.getItem('bookclub_lang') === 'de' ? 'de' : 'en';

@@ -16,7 +16,7 @@ export function createMemberMarkup(t) {
   return `<section id="member-vote-view" class="space-y-5">
     <div id="session-meta" class="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-500"><span id="session-label"></span><span id="session-date"></span></div>
     <div class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3 sm:grid-cols-[15rem_minmax(0,1fr)] sm:gap-4">
-      <div id="identity" class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><label for="member-select" class="mb-2 block text-sm font-semibold">${t('identify')}</label><input id="member-select" list="member-options" autocomplete="off" class="w-full min-w-0 rounded border bg-[#F7F6F2] px-2.5 py-2.5 text-sm sm:px-3" placeholder="${t('identifyPlaceholder')}"><datalist id="member-options"></datalist></div>
+      <div id="identity" class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><label for="member-select" class="mb-2 block text-sm font-semibold">${t('identify')}</label><input id="member-select" list="member-options" autocomplete="off" class="w-full min-w-0 rounded border bg-[#F7F6F2] px-2.5 py-2.5 text-sm sm:px-3" placeholder="${t('identifyPlaceholder')}"><datalist id="member-options"></datalist><p id="member-welcome" hidden class="mt-3 rounded-lg bg-[#F7F6F2] px-3 py-2 text-sm text-neutral-700"></p></div>
       <aside class="min-w-0 rounded-xl border border-[#E2E0D8] bg-white p-3 sm:p-4"><div class="flex items-center justify-between gap-2"><h2 class="serif text-base sm:text-lg">${t('memberBallot')}</h2><span id="member-selection-count" class="shrink-0 rounded-full border px-2 py-1 text-xs tabular-nums">0 / 3</span></div><ul id="member-selection-list" class="mt-2 grid gap-2 text-sm text-neutral-700"></ul><p id="member-selection-empty" class="mt-2 text-xs text-neutral-500">${t('selectNameForSummary')}</p></aside>
     </div>
     <div id="slate-heading" class="flex items-end justify-between"><h2 class="serif text-2xl">${t('slate')}</h2><span id="book-count" class="text-sm text-neutral-500"></span></div>
@@ -50,6 +50,10 @@ export function createAdminOptionSettingsMarkup(t) {
   return `<div class="rounded-lg border border-[#E2E0D8] bg-white p-4"><label for="max-top-books" class="block font-semibold">${t('maxTopBooks')}</label><p class="mt-1 text-sm text-neutral-500">${t('maxTopBooksHint')}</p><select id="max-top-books" class="mt-3 w-full rounded-lg border border-neutral-300 bg-white px-3 py-3 sm:max-w-xs"><option value="3">${t('topCount').replace('{count}','3')}</option><option value="4">${t('topCount').replace('{count}','4')}</option><option value="5">${t('topCount').replace('{count}','5')}</option></select></div><div class="rounded-lg border border-[#E2E0D8] bg-white p-4"><div class="flex items-center justify-between gap-4"><div><h3 class="font-semibold">${t('bookDeletion')}</h3><p class="mt-1 text-sm text-neutral-500">${t('bookDeletionHint')}</p></div><div class="flex items-center gap-2"><label class="relative inline-flex cursor-pointer items-center"><input id="book-deletion-toggle" type="checkbox" role="switch" aria-label="${t('bookDeletion')}" data-action="toggle-book-deletion" class="peer sr-only"><span class="h-6 w-11 rounded-full bg-neutral-300 transition peer-checked:bg-[#71363C] peer-focus-visible:ring-2 peer-focus-visible:ring-neutral-900 peer-focus-visible:ring-offset-2"></span><span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></span></label><span id="book-deletion-switch-state" class="min-w-7 text-xs font-semibold text-neutral-600"></span></div></div></div>`;
 }
 
+export function createAdminBallotRuleMarkup(t) {
+  return `<div class="rounded-lg border border-[#E2E0D8] bg-white p-4"><div class="flex items-center justify-between gap-4"><div><h3 class="font-semibold">${t('requireFullBallot')}</h3><p class="mt-1 text-sm text-neutral-500">${t('requireFullBallotHint')}</p></div><div class="flex items-center gap-2"><label class="relative inline-flex cursor-pointer items-center"><input id="full-ballot-toggle" type="checkbox" role="switch" aria-label="${t('requireFullBallot')}" data-action="toggle-full-ballot" class="peer sr-only"><span class="h-6 w-11 rounded-full bg-neutral-300 transition peer-checked:bg-[#71363C] peer-focus-visible:ring-2 peer-focus-visible:ring-neutral-900 peer-focus-visible:ring-offset-2"></span><span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-5"></span></label><span id="full-ballot-switch-state" class="min-w-7 text-xs font-semibold text-neutral-600"></span></div></div></div>`;
+}
+
 export function renderIdentity(state, t) {
   const select = document.querySelector('#member-select');
   if (!select) return;
@@ -58,11 +62,14 @@ export function renderIdentity(state, t) {
   select.disabled = entries.length === 0;
   select.placeholder = entries.length ? t('identifyPlaceholder') : t('noAttendees');
   select.value = state.memberId && state.attendees[state.memberId] ? memberName(state.roster, state.memberId) : '';
+  const welcome = document.querySelector('#member-welcome');
+  welcome.hidden = !state.memberId || state.attendees[state.memberId] !== true;
+  welcome.textContent = welcome.hidden ? '' : t('welcomeMember').replace('{name}',memberName(state.roster,state.memberId));
   const sessionId = state.settings.sessionId || 'initial';
   const savedBooks = state.memberId && state.ballots[state.memberId]?.sessionId === sessionId ? state.ballots[state.memberId].books || [] : [];
   const chosenBooks = savedBooks.map(id => state.books[id]).filter(Boolean);
   document.querySelector('#member-selection-count').textContent = `${chosenBooks.length} / 3`;
-  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="min-w-0 rounded-lg border border-[#E2E0D8] bg-[#F7F6F2] px-3 py-2"><span class="block break-words font-medium">${escapeHtml(book.title)}</span><span class="mt-1 block truncate text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</span></li>`).join('');
+  document.querySelector('#member-selection-list').innerHTML = chosenBooks.map(book => `<li class="min-w-0 rounded-lg border border-[#E2E0D8] bg-[#F7F6F2] px-3 py-2"><span class="block break-words font-medium">${escapeHtml(book.title)}</span></li>`).join('');
   document.querySelector('#member-selection-empty').hidden = chosenBooks.length > 0;
   document.querySelector('#member-selection-empty').textContent = state.memberId ? t('noBooksSelected') : entries.length ? t('selectNameForSummary') : t('noAttendees');
 }
@@ -75,13 +82,14 @@ export function renderBooks(state, t) {
   if (!state.memberId || state.attendees[state.memberId] !== true) { target.innerHTML = `<p class="rounded-xl border bg-white p-8 text-center text-sm text-neutral-500">${Object.values(state.attendees).some(Boolean) ? t('chooseHint') : t('noAttendees')}</p>`; return; }
   if (!active.length) { target.innerHTML = `<p class="rounded-xl border bg-white p-8 text-center text-sm text-neutral-500">${t('emptySlate')}</p>`; return; }
   const closed = isVotingClosed(state);
+  const selectionLimitReached = state.draft.length >= 3;
   target.className = 'grid grid-cols-2 auto-rows-[11rem] gap-3';
   target.innerHTML = active.map(book => {
-    const selected = state.draft.includes(book.id), disabled = closed || (!selected && state.draft.length >= 3);
+    const selected = state.draft.includes(book.id), limitDisabled = !selected && selectionLimitReached, disabled = closed || limitDisabled;
     const priority = Number(book.missedCount) >= 2;
     const notSelectedLastSession = book.lastStatus === 'carried' && Number(book.lastSessionNumber) === Number(state.settings.sessionNumber || 1) - 1;
     const badges = `${Number(book.bonusPoints) > 0 ? `<span title="${t('bonusRule')}" aria-label="${t('bonusRule')}" class="rounded-full border px-2 py-1">+${Number(book.bonusPoints)}</span>` : ''}${Number(book.missedCount) > 0 ? `<span title="${t(priority ? 'priorityRule' : 'missedRule')}" aria-label="${t(priority ? 'priorityRule' : 'missedRule')}" class="rounded-full border px-2 py-1">↻ ${Number(book.missedCount)}</span>` : ''}${notSelectedLastSession ? `<span title="${t('notSelectedLastSession')}" aria-label="${t('notSelectedLastSession')}" class="rounded-full border px-2 py-1">↪</span>` : ''}`;
-    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="h-full min-w-0 rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-3 text-left ${closed ? 'pointer-events-none opacity-50' : ''}"><span class="grid h-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><span class="flex min-h-0 min-w-0 flex-col"><b class="serif min-h-0 flex-1 overflow-y-auto break-words text-left text-base leading-5 sm:text-lg">${escapeHtml(book.title)}</b><small class="mt-2 block shrink-0 break-words text-right text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</small></span><span class="flex flex-col items-end gap-1 text-[11px]">${badges}</span></span></button>`;
+    return `<button data-action="toggle-book" data-book-id="${escapeHtml(book.id)}" ${disabled ? 'disabled' : ''} class="h-full min-w-0 rounded-xl border ${selected ? 'border-neutral-900 ring-1 ring-neutral-900' : 'border-[#E2E0D8]'} bg-white p-3 text-left ${closed ? 'pointer-events-none opacity-50' : limitDisabled ? 'cursor-not-allowed opacity-40' : ''}"><span class="grid h-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><span class="flex min-h-0 min-w-0 flex-col"><b class="serif min-h-0 flex-1 overflow-y-auto break-words text-left text-base leading-5 sm:text-lg">${escapeHtml(book.title)}</b><small class="mt-2 block shrink-0 break-words text-right text-xs text-neutral-500">${escapeHtml(book.proposer || '')}</small></span><span class="flex flex-col items-end gap-1 text-[11px]">${badges}</span></span></button>`;
   }).join('');
 }
 
@@ -118,6 +126,9 @@ export function renderAdmin(state, t) {
   const bookDeletionToggle = document.querySelector('#book-deletion-toggle');
   bookDeletionToggle.checked = state.settings.bookDeletionEnabled === true;
   document.querySelector('#book-deletion-switch-state').textContent = t(bookDeletionToggle.checked ? 'switchOn' : 'switchOff');
+  const fullBallotToggle = document.querySelector('#full-ballot-toggle');
+  fullBallotToggle.checked = state.settings.requireFullBallot === true;
+  document.querySelector('#full-ballot-switch-state').textContent = t(fullBallotToggle.checked ? 'switchOn' : 'switchOff');
   document.querySelector('#admin-session-name').textContent = String(state.settings.sessionName || `${t('session')} ${state.settings.sessionNumber || 1}`);
   document.querySelector('#admin-session-id').textContent = String(state.settings.sessionId || '—');
   document.querySelector('#admin-session-date').textContent = formatDate(state.settings.sessionDate || Date.now(),state.language);

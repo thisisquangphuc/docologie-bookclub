@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
+import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -36,6 +36,7 @@ function mount() {
   if (isAdmin) {
     document.querySelector('#admin-overview').insertAdjacentHTML('afterbegin',createAdminSessionInfoMarkup(t));
     document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminOptionSettingsMarkup(t));
+    document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminBallotRuleMarkup(t));
   }
   bindMemberSelect();
   if (isAdmin) setAdminTab(state.adminTab);
@@ -133,12 +134,13 @@ function render() {
     const footerMessages = [];
     if (ballot) footerMessages.push(t('saved'));
     if (closed || showingResults) footerMessages.push(t('votingClosed'));
+    else if (state.settings.requireFullBallot === true && state.draft.length < 3) footerMessages.push(t('selectAllThree'));
     else footerMessages.push(state.draft.length ? t('ready') : t('select'));
     document.querySelector('#cast-bar').hidden = false;
     document.querySelector('#cast-hint').textContent = footerMessages.join(' · ');
     document.querySelector('#cast-label').textContent = closed || showingResults ? t('votingClosed') : ballot ? t('edit') : t('cast');
     document.querySelector('#cast-count').textContent = String(state.draft.length);
-    document.querySelector('#cast-btn').disabled = closed || showingResults || !state.memberId || state.draft.length < 1;
+    document.querySelector('#cast-btn').disabled = closed || showingResults || !state.memberId || !isBallotReady();
   }
   if (isAdmin) document.querySelector('#cast-bar').hidden = true;
   document.querySelector('#selected').textContent = String(state.draft.length);
@@ -173,6 +175,7 @@ function handleChange(event) {
   else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
   else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
   else if (event.target.matches('[data-action="toggle-book-deletion"]')) toggleBookDeletion();
+  else if (event.target.matches('[data-action="toggle-full-ballot"]')) toggleFullBallotRequirement();
   else if (event.target.matches('#max-top-books')) setMaxTopBooks(event.target.value);
 }
 
@@ -218,8 +221,12 @@ function toggleDraft(id) {
   render();
 }
 
+function isBallotReady() {
+  return state.settings.requireFullBallot === true ? state.draft.length === 3 : state.draft.length >= 1 && state.draft.length <= 3;
+}
+
 async function castVote() {
-  if (!state.memberId || state.attendees[state.memberId] !== true || isVotingClosed(state) || state.draft.length < 1 || state.draft.length > 3) return;
+  if (!state.memberId || state.attendees[state.memberId] !== true || isVotingClosed(state) || !isBallotReady()) return;
   const sessionId = state.settings.sessionId || 'initial';
   try {
     await service.castBallot(state.memberId, old => {
@@ -286,6 +293,11 @@ async function toggleMemberDeletion() {
 
 async function toggleBookDeletion() {
   try {await service.set('settings/bookDeletionEnabled',state.settings.bookDeletionEnabled !== true);}
+  catch (error) {showError(error);}
+}
+
+async function toggleFullBallotRequirement() {
+  try {await service.set('settings/requireFullBallot',state.settings.requireFullBallot !== true);}
   catch (error) {showError(error);}
 }
 
