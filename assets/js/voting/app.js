@@ -1,5 +1,6 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {guardAdminPage} from '../shared/admin-auth.js';
+import {createMemberAnswerSalt, hashMemberAnswer} from '../shared/member-security.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
 import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createAdminVoteVisibilityMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
@@ -11,7 +12,7 @@ const clientId = getClientId();
 const appRoot = document.querySelector('#app');
 const state = {
   language:getLanguage(),
-  settings:{},books:{},roster:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
+  settings:{},books:{},roster:{},securityQuestions:{},memberSecurityDrafts:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
   memberId:sessionStorage.getItem('member_lobby_id') || sessionStorage.getItem('bookclub_member_id') || '',lobbyMemberId:sessionStorage.getItem('member_lobby_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
   subscriptions:[],resultInProgress:false,drawInProgress:false,lockInProgress:false,clearingBallotId:'',drawTicker:null,loaded:{},view:'vote'
 };
@@ -60,6 +61,7 @@ function bindEvents() {
     render();
   });
   document.addEventListener('change',handleChange);
+  document.addEventListener('input',handleInput);
   window.addEventListener('pagehide', () => {state.subscriptions.forEach(stop => stop());if (state.drawTicker !== null) window.clearInterval(state.drawTicker);});
 }
 
@@ -86,6 +88,7 @@ function subscribe() {
   });
   observe('books_pool','books');
   observe('member_roster','roster');
+  observe('member_security_questions','securityQuestions');
   observe('current_session_members','attendees');
   observe('current_ballots','ballots');
   observe('current_session_presence','presence');
@@ -197,6 +200,8 @@ function handleChange(event) {
   if (event.target.matches('[data-action="toggle-attendance"]')) toggleAttendance(event.target.dataset.memberId,event.target.checked);
   else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
   else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
+  else if (event.target.matches('[data-action="toggle-member-security"]')) toggleMemberSecurity();
+  else if (event.target.matches('[data-member-security-input]')) updateMemberSecurityDraft(event.target);
   else if (event.target.matches('[data-action="toggle-book-deletion"]')) toggleBookDeletion();
   else if (event.target.matches('[data-action="toggle-full-ballot"]')) toggleFullBallotRequirement();
   else if (event.target.matches('[data-action="toggle-vote-counts"]')) toggleMemberVoteCounts();
@@ -207,6 +212,35 @@ function handleSubmit(event) {
   if (event.target.id === 'member-form') {event.preventDefault();addMember();}
   else if (event.target.id === 'book-form') {event.preventDefault();addBook();}
   else if (event.target.id === 'title-form') {event.preventDefault();saveAppTitle();}
+  else if (event.target.matches('[data-member-security-form]')) {event.preventDefault();saveMemberSecurity(event.target);}
+}
+
+function handleInput(event) {
+  if (event.target.matches('input[data-member-security-input]')) updateMemberSecurityDraft(event.target);
+}
+
+function updateMemberSecurityDraft(input) {
+  const id = input.dataset.memberId;
+  if (!id) return;
+  const draft = state.memberSecurityDrafts[id] || {questionId:state.securityQuestions[id]?.questionId || '',answer:''};
+  if (input.name === 'questionId') draft.questionId = input.value;
+  else if (input.name === 'answer') draft.answer = input.value;
+  state.memberSecurityDrafts[id] = draft;
+}
+
+async function saveMemberSecurity(form) {
+  const id = form.dataset.memberId;
+  const questionId = form.elements.questionId.value;
+  const answer = form.elements.answer.value;
+  if (!isAdmin || !state.roster[id] || !questionId || !answer.trim()) return;
+  try {
+    const salt = createMemberAnswerSalt();
+    const answerHash = await hashMemberAnswer(answer,salt);
+    await service.setMemberSecurity(id,questionId,salt,answerHash);
+    delete state.memberSecurityDrafts[id];
+    showFeedback(t('memberSecuritySaved').replace('{name}',memberName(state.roster,id)));
+    render();
+  } catch (error) {showError(error);}
 }
 
 function chooseMember(event) {
@@ -262,7 +296,7 @@ async function castVote() {
     await service.castBallot(state.memberId, old => {
       const previous = old?.sessionId === sessionId ? old : null;
       const clientIds = [...new Set([...(previous?.clientIds || []),clientId])];
-      return {memberName:memberName(state.roster,state.memberId),books:[...state.draft],sessionId,clientIds,duplicateWarning:clientIds.length > 1,updatedAt:Date.now()};
+      return {memberName:memberName(state.roster,state.memberId),books:[...state.draft],sessionId,clientIds,securityClientId:clientId,duplicateWarning:clientIds.length > 1,updatedAt:Date.now()};
     });
     state.draftDirty = false;
   } catch (error) {showError(error);}
@@ -347,6 +381,21 @@ async function toggleHistoryAccess() {
 async function toggleMemberDeletion() {
   try {await service.set('settings/memberDeletionEnabled',state.settings.memberDeletionEnabled !== true);}
   catch (error) {showError(error);}
+}
+
+async function toggleMemberSecurity() {
+  if (state.settings.requireMemberSecurityQuestion !== true) {
+    const members = Object.keys(state.roster);
+    const missing = members.filter(id => !state.securityQuestions[id]?.questionId || !state.securityQuestions[id]?.salt);
+    if (!members.length || missing.length) {
+      const names = missing.map(id => memberName(state.roster,id)).join(', ');
+      showFeedback(t(!members.length ? 'memberSecurityNeedsRoster' : 'memberSecurityNeedsSetup').replace('{names}',names));
+      render();
+      return;
+    }
+  }
+  try {await service.set('settings/requireMemberSecurityQuestion',state.settings.requireMemberSecurityQuestion !== true);}
+  catch (error) {showError(error);render();}
 }
 
 async function toggleBookDeletion() {

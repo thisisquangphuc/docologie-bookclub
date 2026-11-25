@@ -1,4 +1,5 @@
 import { initializeDatabase } from '../shared/firebase.js';
+import { hashMemberAnswer, MEMBER_SECURITY_QUESTIONS } from '../shared/member-security.js';
 import { createLobbyService } from './service.js';
 
 const service = createLobbyService(initializeDatabase());
@@ -10,11 +11,20 @@ const lobbyContent = document.querySelector('#lobby-content');
 const memberSelect = document.querySelector('#member-name');
 const enterButton = document.querySelector('#enter-lobby-button');
 const continueButton = document.querySelector('#continue-lobby');
+const securityQuestion = document.querySelector('#member-security-question');
+const securityAnswer = document.querySelector('#member-security-answer');
+const securityChallenge = document.querySelector('#member-security-challenge');
 const locale = navigator.language || 'en-GB';
-const lobbyClientId = crypto.randomUUID();
+const lobbyClientId = sessionStorage.getItem('bookclub_client_id') || crypto.randomUUID();
+sessionStorage.setItem('bookclub_client_id',lobbyClientId);
 const events = {voting:null,debate:null};
 const eventSources = {voting:{loaded:false,error:false},debate:{loaded:false,error:false}};
 let roster = {};
+let securityQuestions = {};
+let securityQuestionsLoaded = false;
+let securitySettingLoaded = false;
+let requireSecurityQuestion = false;
+let securityPromptKey = '';
 let selectedMemberId = sessionStorage.getItem('member_lobby_id') || '';
 let activeMemberId = '';
 let pendingMemberId = '';
@@ -22,6 +32,8 @@ let checkingMemberId = '';
 let stopVoting;
 let stopDebate;
 let stopRoster;
+let stopSettings;
+let stopSecurityQuestions;
 let stopPresence;
 
 function memberName(value) {
@@ -43,6 +55,20 @@ function populateMemberSelect() {
   memberSelect.value = selected;
   memberSelect.disabled = Object.keys(roster).length === 0;
   memberSelect.options[0].textContent = Object.keys(roster).length ? 'Choose your name…' : 'No members found. Ask the host to add the club roster.';
+}
+
+function updateSecurityChallenge(memberId) {
+  const required = requireSecurityQuestion && !!memberId;
+  const config = securityQuestions[memberId];
+  const promptKey = required ? `${memberId}:${config?.questionId || ''}` : '';
+  if (promptKey !== securityPromptKey) securityAnswer.value = '';
+  securityPromptKey = promptKey;
+  securityChallenge.hidden = !required;
+  securityAnswer.required = required;
+  const question = MEMBER_SECURITY_QUESTIONS.find(item => item.id === config?.questionId);
+  securityQuestion.textContent = question ? question[navigator.language?.toLowerCase().startsWith('de') ? 'de' : 'en'] : 'Ask the host to set up your security question before entering.';
+  securityAnswer.disabled = !question;
+  enterButton.disabled = !securitySettingLoaded || (required && (!securityQuestionsLoaded || !question || !config?.salt));
 }
 
 function addEventCard({kind,title,description,date,href,label}) {
@@ -112,8 +138,19 @@ async function handleMemberEntry(event) {
   }
   checkingMemberId = memberId;
   enterButton.disabled = true;
-  document.querySelector('#member-entry-status').textContent = 'Checking whether this name is already in the lobby…';
+  const status = document.querySelector('#member-entry-status');
+  status.textContent = requireSecurityQuestion ? 'Checking your answer…' : 'Checking whether this name is already in the lobby…';
   try {
+    if (!securitySettingLoaded) {status.textContent = 'Could not load the lobby settings yet. Please try again.';return;}
+    if (requireSecurityQuestion) {
+      if (!securityQuestionsLoaded) {status.textContent = 'Security questions are still loading. Please try again.';return;}
+      const config = securityQuestions[memberId];
+      if (!config?.questionId || !config?.salt) {status.textContent = 'Your security question is not set up yet. Please ask the host.';return;}
+      const answerHash = await hashMemberAnswer(securityAnswer.value,config.salt);
+      await service.verifyMemberAnswer(memberId,lobbyClientId,answerHash);
+      if (memberSelect.value !== memberId) return;
+    }
+    status.textContent = 'Checking whether this name is already in the lobby…';
     const alreadyPresent = await service.isMemberInLobby(memberId,lobbyClientId);
     if (memberSelect.value !== memberId) return;
     if (alreadyPresent) {
@@ -124,10 +161,10 @@ async function handleMemberEntry(event) {
     }
     enterLobby(memberId);
   } catch {
-    document.querySelector('#member-entry-status').textContent = 'Could not check the lobby right now. Please try again.';
+    status.textContent = requireSecurityQuestion ? 'That answer was not accepted, or the security check is unavailable. Check it and try again, or ask the host.' : 'Could not check the lobby right now. Please try again.';
   } finally {
     checkingMemberId = '';
-    enterButton.disabled = false;
+    enterButton.disabled = !securitySettingLoaded || (requireSecurityQuestion && (!securityQuestionsLoaded || !securityQuestions[memberSelect.value]?.questionId || !securityQuestions[memberSelect.value]?.salt));
   }
 }
 
@@ -166,10 +203,12 @@ memberSelect.addEventListener('change',() => {
   pendingMemberId = '';
   continueButton.hidden = true;
   document.querySelector('#member-entry-status').textContent = '';
+  updateSecurityChallenge(memberSelect.value);
 });
 document.querySelector('#change-member').addEventListener('click',returnToMemberEntry);
 document.querySelector('#lobby-date').textContent = formatDate('');
 populateMemberSelect();
+updateSecurityChallenge(memberSelect.value);
 stopRoster = service.observeRoster(value => {
   roster = value || {};
   if (activeMemberId && !roster[activeMemberId]) {
@@ -178,6 +217,16 @@ stopRoster = service.observeRoster(value => {
   }
   populateMemberSelect();
 },error => {document.querySelector('#member-entry-status').textContent = error?.message || 'Could not load the club member list.';});
+stopSettings = service.observe('settings',value => {
+  securitySettingLoaded = true;
+  requireSecurityQuestion = value?.requireMemberSecurityQuestion === true;
+  updateSecurityChallenge(memberSelect.value);
+},error => {document.querySelector('#member-entry-status').textContent = error?.message || 'Could not load lobby settings.';});
+stopSecurityQuestions = service.observeSecurityQuestions(value => {
+  securityQuestions = value || {};
+  securityQuestionsLoaded = true;
+  updateSecurityChallenge(memberSelect.value);
+},() => {securityQuestionsLoaded = false;updateSecurityChallenge(memberSelect.value);});
 stopVoting = service.observeVoting(value => {
   events.voting = value;
   eventSources.voting.loaded = true;
@@ -190,4 +239,4 @@ stopDebate = service.observeDebate(value => {
   eventSources.debate.error = false;
   renderEvents();
 },() => showEventError('debate'));
-window.addEventListener('pagehide',() => {stopVoting?.();stopDebate?.();stopRoster?.();stopPresence?.();});
+window.addEventListener('pagehide',() => {stopVoting?.();stopDebate?.();stopRoster?.();stopSettings?.();stopSecurityQuestions?.();stopPresence?.();});

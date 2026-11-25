@@ -33,6 +33,12 @@ export function createLobbyService(database) {
     observeRoster(onValue, onError) {
       return observe('member_roster',onValue,onError);
     },
+    observeSecurityQuestions(onValue, onError) {
+      return observe('member_security_questions',onValue,onError);
+    },
+    verifyMemberAnswer(memberId, clientId, answerHash) {
+      return database.ref(`member_security_proofs/${memberId}/${clientId}`).set(answerHash);
+    },
     async isMemberInLobby(memberId, ownClientId) {
       const snapshot = await database.ref(`lobby_presence/${memberId}`).once('value');
       const sessions = snapshot.val() || {};
