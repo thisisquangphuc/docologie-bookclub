@@ -1,7 +1,10 @@
 import { getAdminAuth, isAuthorizedAdmin } from '../shared/admin-auth.js';
 
 const auth = getAdminAuth();
-const button = document.querySelector('#google-login');
+const form = document.querySelector('#admin-login-form');
+const button = document.querySelector('#email-login');
+const emailInput = document.querySelector('#admin-email');
+const passwordInput = document.querySelector('#admin-password');
 const status = document.querySelector('#login-status');
 let redirecting = false;
 
@@ -18,25 +21,24 @@ function openDashboard() {
 
 auth.onAuthStateChanged(user => {
   if (isAuthorizedAdmin(user)) openDashboard();
-  else if (user) auth.signOut().then(() => showStatus('This Google account is not authorized for admin access.'));
+  else if (user) auth.signOut().then(() => showStatus('This account is not authorized for admin access.'));
 });
 
-button.addEventListener('click', async () => {
+form.addEventListener('submit', async event => {
+  event.preventDefault();
   button.disabled = true;
-  showStatus('Signing in with Google…');
+  showStatus('Signing in…');
   try {
-    const provider = new window.firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({prompt:'select_account'});
-    const result = await auth.signInWithPopup(provider);
+    const result = await auth.signInWithEmailAndPassword(emailInput.value.trim(),passwordInput.value);
     if (!isAuthorizedAdmin(result.user)) {
       await auth.signOut();
-      showStatus('This Google account is not authorized for admin access.');
+      showStatus('This account is not authorized for admin access.');
       return;
     }
     openDashboard();
   } catch (error) {
     console.error(error);
-    showStatus(error?.code === 'auth/unauthorized-domain' ? 'This site domain is not enabled for Firebase Authentication.' : 'Sign-in failed. Please try again.');
+    showStatus('Sign-in failed. Check the email and password, then try again.');
   } finally {
     button.disabled = false;
   }
