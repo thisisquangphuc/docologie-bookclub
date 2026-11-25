@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F7F6F2">
+  <title>Docologie · Admin Sign In</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+</head>
+<body class="min-h-screen bg-[#F7F6F2] font-sans text-neutral-900">
+  <header class="bg-[#111] text-white">
+    <div class="mx-auto flex max-w-4xl items-center justify-between gap-4 px-5 py-5">
+      <div><p class="text-xs uppercase tracking-[.2em] text-neutral-400">Docologie · Book Club</p><h1 class="serif mt-1 text-2xl">Admin Sign In</h1></div>
+      <a href="index.html" class="rounded border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:text-white">Member Lobby</a>
+    </div>
+  </header>
+  <main class="mx-auto max-w-md px-5 py-16">
+    <section class="rounded-2xl border border-[#E2E0D8] bg-white p-6 shadow-sm sm:p-8">
+      <p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]">Admin access</p>
+      <h2 class="serif mt-2 text-3xl">Sign in to manage the club</h2>
+      <p class="mt-3 text-base leading-6 text-neutral-600">Use the authorized Google account to open the admin dashboard.</p>
+      <button id="google-login" type="button" class="mt-6 w-full rounded-lg bg-neutral-900 px-4 py-3 text-base font-semibold text-white hover:bg-neutral-800 disabled:cursor-wait disabled:opacity-50">Continue with Google</button>
+      <p id="login-status" hidden class="mt-4 text-sm text-[#71363C]" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <script type="module" src="assets/js/admin/login.js"></script>
+</body>
+</html>

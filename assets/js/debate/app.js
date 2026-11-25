@@ -1,4 +1,5 @@
-import { ADMIN_QUERY_CODE, ROUND_DURATION_MS, initializeDatabase } from './config.js';
+import { ROUND_DURATION_MS, initializeDatabase } from './config.js';
+import { guardAdminPage } from '../shared/admin-auth.js';
 import { createDebateService } from './session-service.js';
 import { createRulesMarkup, escapeHtml, getLanguage, translate } from './i18n.js';
 import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, renderDisplay, renderHost, renderParticipant, renderRulesDialog } from './views.js';
@@ -6,7 +7,7 @@ import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, renderD
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') || 'join';
 const sessionId = params.get('session') || '';
-const canHost = mode === 'host' && params.get('admin') === ADMIN_QUERY_CODE;
+const canHost = mode === 'host' && params.get('admin') === '1';
 const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
@@ -89,7 +90,7 @@ async function handleCreateSession(event) {
   if (!statement1 || !statement2) return;
   try {
     const id = await service.createSession(statement1,statement2);
-    const url = new URL(location.href); url.search = `?mode=host&admin=${ADMIN_QUERY_CODE}&session=${encodeURIComponent(id)}`;
+    const url = new URL(location.href); url.search = `?mode=host&admin=1&session=${encodeURIComponent(id)}`;
     history.replaceState({},'',url.href);
     watchSession(id);
   } catch { showError(); }
@@ -216,8 +217,15 @@ document.querySelector('#close-rules').addEventListener('click',()=>{document.qu
 document.querySelector('#rules-modal').addEventListener('click',event=>{if(event.target.id==='rules-modal')document.querySelector('#rules-modal').hidden=true;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelector('#rules-modal').hidden=true;});
 
-mountView();
-service.observeRoster(roster=>{state.roster=roster;renderRosterOptions();resumeParticipantIfKnown();},()=>showError());
-if (sessionId && (mode !== 'host' || canHost)) watchSession(sessionId);
-else if (mode==='display'||mode==='join') { showError(t('noSession')); if(mode==='join')app.querySelector('#join-session-form').hidden=true; }
-window.setInterval(updateTimer,1000);
+function startApp() {
+  mountView();
+  service.observeRoster(roster=>{state.roster=roster;renderRosterOptions();resumeParticipantIfKnown();},()=>showError());
+  if (sessionId && (mode !== 'host' || canHost)) watchSession(sessionId);
+  else if (mode==='display'||mode==='join') { showError(t('noSession')); if(mode==='join')app.querySelector('#join-session-form').hidden=true; }
+  window.setInterval(updateTimer,1000);
+}
+
+if (canHost) {
+  app.hidden = true;
+  guardAdminPage(() => {app.hidden = false;startApp();});
+} else startApp();

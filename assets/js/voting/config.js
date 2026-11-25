@@ -1,10 +1,9 @@
 import { initializeDatabase } from '../shared/firebase.js';
 
-export const ADMIN_QUERY_CODE = '1234';
 export { initializeDatabase };
 
 export function isAdminMode() {
-  return new URLSearchParams(location.search).get('admin') === ADMIN_QUERY_CODE;
+  return new URLSearchParams(location.search).get('admin') === '1';
 }
 
 export function getClientId() {

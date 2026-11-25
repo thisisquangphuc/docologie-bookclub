@@ -1,4 +1,5 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
+import {guardAdminPage} from '../shared/admin-auth.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
 import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createAdminVoteVisibilityMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
@@ -16,9 +17,14 @@ const state = {
 };
 const t = key => translate(state.language,key);
 
-mount();
-bindEvents();
-subscribe();
+if (isAdmin) {
+  appRoot.hidden = true;
+  guardAdminPage(() => {appRoot.hidden = false;mount();bindEvents();subscribe();});
+} else {
+  mount();
+  bindEvents();
+  subscribe();
+}
 
 function mount() {
   document.documentElement.lang = state.language;

@@ -8,8 +8,12 @@ const firebaseConfig = {
   appId: '1:206131012579:web:5192f86488f4b58b00b6d6'
 };
 
-export function initializeDatabase() {
+export function initializeFirebaseApp() {
   if (!window.firebase) throw new Error('Firebase SDK did not load.');
   if (!window.firebase.apps.length) window.firebase.initializeApp(firebaseConfig);
-  return window.firebase.database();
+  return window.firebase;
+}
+
+export function initializeDatabase() {
+  return initializeFirebaseApp().database();
 }
