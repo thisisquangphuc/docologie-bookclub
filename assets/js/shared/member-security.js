@@ -1,8 +1,16 @@
 export const MEMBER_SECURITY_QUESTIONS = [
-  {id:'clubBook',en:'What book did we discuss at your first club meeting?',de:'Welches Buch haben wir bei deinem ersten Clubtreffen besprochen?'},
-  {id:'clubSnack',en:'What snack do you usually bring to the club?',de:'Welchen Snack bringst du normalerweise zum Club mit?'},
-  {id:'clubPlace',en:'Where do we usually meet?',de:'Wo treffen wir uns normalerweise?'},
-  {id:'clubPhrase',en:'What phrase or joke is often heard at our meetings?',de:'Welchen Spruch oder Witz hört man oft bei unseren Treffen?'}
+  {id:'primarySchool',en:'What was the name of your primary school?',de:'Wie hieß deine Grundschule?'},
+  {id:'middleSchool',en:'What was the name of your middle school?',de:'Wie hieß deine Mittelschule?'},
+  {id:'highSchool',en:'What was the name of your high school?',de:'Wie hieß deine weiterführende Schule?'},
+  {id:'university',en:'Which university did you attend?',de:'Welche Universität hast du besucht?'},
+  {id:'favoriteBook',en:'What is your favorite book?',de:'Was ist dein Lieblingsbuch?'},
+  {id:'firstBook',en:'What is the first book you remember reading?',de:'An welches erste Buch, das du gelesen hast, erinnerst du dich?'},
+  {id:'favoriteAuthor',en:'Who is your favorite author?',de:'Wer ist dein Lieblingsautor oder deine Lieblingsautorin?'},
+  {id:'favoriteGenre',en:'What is your favorite book genre?',de:'Welches Buchgenre magst du am liebsten?'},
+  {id:'favoriteCharacter',en:'Who is your favorite character from a book?',de:'Wer ist deine Lieblingsfigur aus einem Buch?'},
+  {id:'favoriteSeries',en:'What is your favorite book series?',de:'Was ist deine Lieblingsbuchreihe?'},
+  {id:'mostReReadBook',en:'Which book have you reread the most?',de:'Welches Buch hast du am häufigsten erneut gelesen?'},
+  {id:'favoriteReadingPlace',en:'Where do you most like to read?',de:'Wo liest du am liebsten?'}
 ];
 
 export function normalizeMemberAnswer(value) {

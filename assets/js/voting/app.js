@@ -1,6 +1,6 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {guardAdminPage} from '../shared/admin-auth.js';
-import {createMemberAnswerSalt, hashMemberAnswer} from '../shared/member-security.js';
+import {createMemberAnswerSalt, hashMemberAnswer, MEMBER_SECURITY_QUESTIONS} from '../shared/member-security.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
 import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createAdminVoteVisibilityMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
@@ -451,7 +451,7 @@ async function toggleMemberDeletion() {
 async function toggleMemberSecurity() {
   if (state.settings.requireMemberSecurityQuestion !== true) {
     const members = Object.keys(state.roster);
-    const missing = members.filter(id => !state.securityQuestions[id]?.questionId || !state.securityQuestions[id]?.salt);
+    const missing = members.filter(id => !MEMBER_SECURITY_QUESTIONS.some(question => question.id === state.securityQuestions[id]?.questionId) || !state.securityQuestions[id]?.salt);
     if (!members.length || missing.length) {
       const names = missing.map(id => memberName(state.roster,id)).join(', ');
       showFeedback(t(!members.length ? 'memberSecurityNeedsRoster' : 'memberSecurityNeedsSetup').replace('{names}',names));
