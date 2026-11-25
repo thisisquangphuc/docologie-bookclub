@@ -8,6 +8,7 @@ export function createVotingService(database) {
 
   return {
     observe,
+    read: path => database.ref(path).once('value').then(snapshot => snapshot.val() || {}),
     addMember: member => database.ref('member_roster').push().set(member),
     removeMember: id => database.ref().update({[`member_roster/${id}`]:null,[`current_session_members/${id}`]:null,[`current_session_presence/${id}`]:null,[`current_ballots/${id}`]:null}),
     addBook: book => database.ref('books_pool').push().set(book),
@@ -22,6 +23,15 @@ export function createVotingService(database) {
     }),
     set: (path, value) => database.ref(path).set(value),
     update: values => database.ref().update(values),
-    nextHistoryKey: () => database.ref('history').push().key
+    claimWildcardDraw: (sessionId, clientId, now) => database.ref('pending_results').transaction(result => {
+      if (result?.sessionId !== sessionId || result.drawnAt || (result.drawClaim?.startedAt && now - result.drawClaim.startedAt < 30000)) return;
+      return {...result,drawStartedAt:now,drawClaim:{clientId,startedAt:now}};
+    },undefined,false),
+    commitWildcardDraw: (sessionId, clientId, chosenId, now) => database.ref('pending_results').transaction(result => {
+      if (result?.sessionId !== sessionId || result.drawnAt || result.drawClaim?.clientId !== clientId) return;
+      const chosen = result.wildcardCandidates?.find(book => book.id === chosenId);
+      if (!chosen) return;
+      return {...result,winners:[...(result.winners || []),chosen],drawnAt:now,drawnDate:new Date(now).toISOString().slice(0,10),drawClaim:null};
+    },undefined,false)
   };
 }

@@ -13,6 +13,9 @@ The book voting app is a buildless GitHub Pages entry point. `index.html` owns t
 
 The app uses relative imports and paths, so it works from a GitHub Pages project subpath. It requires no package manager, bundler, or build step. Firebase access belongs in the voting service; keep workshop state in the separate `/debate_sessions` namespace.
 
+Closing voting stores the final ballots under `/session_ballots/{sessionId}` and sets `settings.locked` in the same database update. Reopening and closing again replaces that session's snapshot. Result preparation reads the saved snapshot, so later changes to `/current_ballots` do not change the prepared ranking. Starting the next session clears `/current_ballots` but retains the saved session ballots.
+The wildcard draw uses a Firebase transaction to claim the draw and another transaction to commit its one winner. History uses the session ID as its key so completing results again after a network interruption does not create a second archive entry or add bonus points twice.
+
 ## Merge boundaries
 
 Keep voting implementation changes in `assets/js/voting/` and its feature stylesheet. Keep workshop implementation changes in `assets/js/debate/` and `assets/css/debate.css`. Root HTML files should remain small entry points. When a feature needs a link from another page, add only that integration link in the owning view and avoid moving or reformatting unrelated entry-point markup.

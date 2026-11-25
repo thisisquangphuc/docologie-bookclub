@@ -12,7 +12,7 @@ const state = {
   language:getLanguage(),
   settings:{},books:{},roster:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
   memberId:sessionStorage.getItem('bookclub_member_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
-  subscriptions:[],resultInProgress:false,drawInProgress:false,drawTicker:null,loaded:{},view:'vote'
+  subscriptions:[],resultInProgress:false,drawInProgress:false,lockInProgress:false,drawTicker:null,loaded:{},view:'vote'
 };
 const t = key => translate(state.language,key);
 
@@ -286,9 +286,17 @@ async function toggleAttendance(id,attending) {
 }
 
 async function toggleLock() {
-  if (state.pendingResults?.sessionId === (state.settings.sessionId || 'initial')) return;
-  try {await service.set('settings/locked',!isVotingClosed(state));}
+  if (state.lockInProgress || state.pendingResults?.sessionId === (state.settings.sessionId || 'initial')) return;
+  state.lockInProgress = true;
+  try {
+    if (state.settings.locked === true) {await service.set('settings/locked',false);return;}
+    const sessionId = state.settings.sessionId || 'initial';
+    const ballots = await service.read('current_ballots');
+    const finalBallots = Object.fromEntries(Object.entries(ballots).filter(([,ballot]) => ballot?.sessionId === sessionId));
+    await service.update({[`session_ballots/${sessionId}`]:{sessionId,lockedAt:Date.now(),ballots:finalBallots},'settings/locked':true});
+  }
   catch (error) {showError(error);}
+  finally {state.lockInProgress = false;render();}
 }
 
 async function toggleHistoryAccess() {
@@ -348,21 +356,25 @@ function recordMemberEntry() {
 
 async function finalizeResults() {
   if (state.resultInProgress) return;
-  if (!isVotingClosed(state)) {showFeedback(t('closeFirst'));return;}
+  if (state.settings.locked !== true) {showFeedback(t('closeFirst'));return;}
   const sessionId = state.settings.sessionId || 'initial';
   if (state.pendingResults?.sessionId === sessionId) {
     if (isWildcardDrawPending(state)) return;
+    if (state.settings.archivedSessionId !== sessionId) {await completeResults(state.pendingResults);return;}
     try {await service.set('settings/showResults',state.settings.showResults !== true);}
     catch (error) {showError(error);}
     return;
   }
-  const scores = scoreMap();
+  state.resultInProgress = true;
+  let frozenBallots;
+  try {const snapshot = await service.read(`session_ballots/${sessionId}`);frozenBallots = snapshot.lockedAt ? snapshot.ballots || {} : currentBallots();}
+  catch (error) {state.resultInProgress = false;showError(error);return;}
+  const scores = scoreMap(frozenBallots);
   const slateBooks = Object.entries(state.books).filter(([,book]) => book.active === true).map(([id,book]) => ({id,...book,voteCount:scores[id] || 0,bonusPoints:Number(book.bonusPoints) || 0,missedCount:Number(book.missedCount) || 0,total:(scores[id] || 0)+(Number(book.bonusPoints) || 0)}));
   const activeBooks = [...slateBooks].sort((a,b) => b.total-a.total || b.missedCount-a.missedCount || String(a.title).localeCompare(String(b.title)));
   const sessionSelections = [...slateBooks].sort((a,b) => String(a.title).localeCompare(String(b.title))).map(makeSessionSelection);
   const maxTopBooks = Number([3,4,5].includes(Number(state.settings.maxTopBooks)) ? state.settings.maxTopBooks : 3);
-  if (activeBooks.length < maxTopBooks) {showFeedback(t('needTopBooks').replace('{count}',String(maxTopBooks)));return;}
-  state.resultInProgress = true;
+  if (activeBooks.length < maxTopBooks) {state.resultInProgress = false;showFeedback(t('needTopBooks').replace('{count}',String(maxTopBooks)));return;}
   try {
     const fixedWinners = maxTopBooks - 1;
     const winners = activeBooks.slice(0,fixedWinners).map(book => makeWinner(book,'top'));
@@ -382,12 +394,13 @@ async function playWildcardDraw() {
   render();
   const candidates = pending.wildcardCandidates;
   try {
-    const drawStartedAt = Date.now();
-    await service.set('pending_results/drawStartedAt',drawStartedAt);
+    const claim = await service.claimWildcardDraw(pending.sessionId,clientId,Date.now());
+    if (!claim.committed) {showFeedback(t('drawInProgress'));return;}
+    const drawStartedAt = claim.snapshot.val().drawStartedAt;
     while (Date.now() - drawStartedAt < 2700) await new Promise(resolve => window.setTimeout(resolve,110));
     const index = uniformRandomIndex(candidates.length), chosen = candidates[index];
-    const result = {...pending,drawStartedAt,winners:[...pending.winners,chosen],drawnAt:Date.now(),drawnDate:new Date().toISOString().slice(0,10)};
-    await completeResults(result);
+    const committed = await service.commitWildcardDraw(pending.sessionId,clientId,chosen.id,Date.now());
+    if (committed.committed) await completeResults(committed.snapshot.val());
   } catch (error) {showError(error);}
   finally {state.drawInProgress = false;render();}
 }
@@ -401,27 +414,28 @@ function uniformRandomIndex(length) {
 
 async function completeResults(result) {
   if (state.settings.archivedSessionId === result.sessionId) return;
-  const now = Date.now(), key = service.nextHistoryKey(), winningIds = new Set(result.winners.map(book => book.id));
+  let existingBooks;
+  try {existingBooks = await service.read('books_pool');}
+  catch (error) {showError(error);return false;}
+  const now = Date.now(), winningIds = new Set(result.winners.map(book => book.id));
   const updates = {
     pending_results:{...result,archivedAt:now},
-    [`history/${key}`]:{...result,archivedAt:now,date:new Date(result.drawnAt || result.preparedAt || now).toISOString().slice(0,10)},
+    [`history/${result.sessionId}`]:{...result,archivedAt:now,date:new Date(result.drawnAt || result.preparedAt || now).toISOString().slice(0,10)},
     'settings/showResults':true,'settings/locked':true,'settings/archivedSessionId':result.sessionId
   };
-  Object.entries(state.books).forEach(([id,book]) => {
-    const wasOnSlate = book.active === true;
-    if (wasOnSlate) {
-      updates[`books_pool/${id}/lastStatus`] = winningIds.has(id) ? 'selected' : 'carried';
-      updates[`books_pool/${id}/lastSessionNumber`] = Number(result.sessionNumber) || 1;
-    }
-    updates[`books_pool/${id}/bonusPoints`] = winningIds.has(id) ? 0 : (Number(book.bonusPoints) || 0) + (wasOnSlate ? 1 : 0);
-    updates[`books_pool/${id}/missedCount`] = winningIds.has(id) ? 0 : (Number(book.missedCount) || 0) + (wasOnSlate ? 1 : 0);
+  (result.sessionSelections || []).forEach(book => {
+    if (!existingBooks[book.id]) return;
+    updates[`books_pool/${book.id}/lastStatus`] = winningIds.has(book.id) ? 'selected' : 'carried';
+    updates[`books_pool/${book.id}/lastSessionNumber`] = Number(result.sessionNumber) || 1;
+    updates[`books_pool/${book.id}/bonusPoints`] = winningIds.has(book.id) ? 0 : (Number(book.bonusPoints) || 0) + 1;
+    updates[`books_pool/${book.id}/missedCount`] = winningIds.has(book.id) ? 0 : (Number(book.missedCount) || 0) + 1;
   });
   try {await service.update(updates);showFeedback(t('archived'));return true;}
   catch (error) {showError(error);return false;}
 }
 
 async function startNextSession() {
-  if (!state.pendingResults?.winners?.length || state.pendingResults.sessionId !== (state.settings.sessionId || 'initial')) return;
+  if (state.settings.archivedSessionId !== (state.settings.sessionId || 'initial') || state.pendingResults?.sessionId !== state.settings.archivedSessionId) return;
   if (!window.confirm(t('confirm'))) return;
   const nextSettings = {...state.settings,sessionId:crypto.randomUUID(),sessionNumber:(Number(state.settings.sessionNumber) || Object.keys(state.history).length || 1)+1,sessionDate:new Date().toISOString().slice(0,10),locked:false,showResults:false,archivedSessionId:null};
   const updates = {settings:nextSettings,current_ballots:null,current_session_members:null,current_session_presence:null,pending_results:null};
@@ -462,9 +476,9 @@ function currentBallots() {
   return Object.fromEntries(Object.entries(state.ballots).filter(([,ballot]) => ballot?.sessionId === (state.settings.sessionId || 'initial')));
 }
 
-function scoreMap() {
+function scoreMap(ballots) {
   const scores = {};
-  Object.values(currentBallots()).forEach(ballot => (ballot.books || []).forEach(id => scores[id] = (scores[id] || 0) + 1));
+  Object.values(ballots).forEach(ballot => (ballot.books || []).forEach(id => scores[id] = (scores[id] || 0) + 1));
   return scores;
 }
 
