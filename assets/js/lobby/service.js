@@ -30,15 +30,21 @@ export function createLobbyService(database) {
       }, onError);
       return () => { stopActive(); stopSession?.(); };
     },
-    observeWaitingCount(clientId, onValue, onError) {
-      const presenceRef = database.ref(`lobby_presence/${clientId}`);
+    observeRoster(onValue, onError) {
+      return observe('member_roster',onValue,onError);
+    },
+    observeWaitingCount(memberId, clientId, onValue, onError) {
+      const presenceRef = database.ref(`lobby_presence/${memberId}/${clientId}`);
       const connectionRef = database.ref('.info/connected');
       const connectionListener = snapshot => {
         if (snapshot.val() !== true) return;
         presenceRef.onDisconnect().remove().then(() => presenceRef.set({joinedAt:Date.now()})).catch(onError);
       };
       const countRef = database.ref('lobby_presence');
-      const countListener = snapshot => onValue(snapshot.numChildren());
+      const countListener = snapshot => {
+        const members = snapshot.val() || {};
+        onValue(Object.values(members).filter(sessions => sessions && Object.keys(sessions).length > 0).length);
+      };
       connectionRef.on('value', connectionListener, onError);
       countRef.on('value', countListener, onError);
       return () => {

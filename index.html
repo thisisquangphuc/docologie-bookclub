@@ -19,11 +19,25 @@
     </div>
   </header>
   <main class="mx-auto max-w-4xl space-y-6 px-5 py-8">
-    <section class="grid gap-3 sm:grid-cols-2">
-      <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Today</p><p id="lobby-date" class="serif mt-2 text-xl"></p></article>
-      <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Active visitors</p><p class="serif mt-2 text-3xl"><span id="lobby-count">0</span><span class="ml-2 text-base font-normal text-neutral-500">in the lobby</span></p></article>
+    <section id="member-entry" class="mx-auto max-w-xl rounded-xl border border-[#E2E0D8] bg-white p-5 sm:p-7">
+      <p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]">Welcome</p>
+      <h2 class="serif mt-2 text-2xl">Enter the member lobby</h2>
+      <p class="mt-2 text-sm text-neutral-500">Choose your name from the club member list to continue.</p>
+      <form id="member-entry-form" class="mt-5 space-y-3">
+        <label for="member-name" class="block text-sm font-semibold">Your name</label>
+        <select id="member-name" required class="w-full rounded-lg border border-neutral-300 bg-[#F7F6F2] p-3"><option value="">Loading members…</option></select>
+        <button class="w-full rounded-lg bg-neutral-900 px-4 py-3 font-semibold text-white">Enter lobby</button>
+      </form>
+      <p id="member-entry-status" class="mt-3 text-sm text-[#71363C]" role="status"></p>
     </section>
-    <section><div class="mb-3"><p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]">Book Club</p><h2 class="serif mt-1 text-2xl">Events</h2></div><p id="lobby-error" hidden class="mb-3 text-sm text-[#71363C]" role="status"></p><div id="event-list" class="space-y-3"></div><div id="empty-state" hidden class="rounded-xl border border-dashed border-neutral-300 bg-white/70 p-8 text-center"><p class="serif text-xl">No events are happening right now.</p><p class="mt-2 text-sm text-neutral-500">Check back when the host opens a vote or starts a debate workshop.</p></div></section>
+    <div id="lobby-content" hidden class="space-y-6">
+      <div class="flex items-center justify-between gap-3"><p id="welcome-member" class="text-sm text-neutral-600"></p><button id="change-member" class="rounded border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold">Change name</button></div>
+      <section class="grid gap-3 sm:grid-cols-2">
+        <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Today</p><p id="lobby-date" class="serif mt-2 text-xl"></p></article>
+        <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Members in the waiting room</p><p class="serif mt-2 text-3xl"><span id="lobby-count">0</span></p></article>
+      </section>
+      <section><div class="mb-3"><p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]">Book Club</p><h2 class="serif mt-1 text-2xl">Events</h2></div><p id="lobby-error" hidden class="mb-3 text-sm text-[#71363C]" role="status"></p><p id="event-loading" class="rounded-xl border border-[#E2E0D8] bg-white p-5 text-sm text-neutral-500">Checking for current events…</p><div id="event-list" class="space-y-3"></div><div id="empty-state" hidden class="rounded-xl border border-dashed border-neutral-300 bg-white/70 p-8 text-center"><p class="serif text-xl">No events are happening right now.</p><p class="mt-2 text-sm text-neutral-500">Check back when the host opens a vote or starts a debate workshop.</p></div></section>
+    </div>
   </main>
   <script type="module" src="assets/js/lobby/app.js"></script>
 </body>

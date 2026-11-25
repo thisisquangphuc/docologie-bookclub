@@ -10,7 +10,7 @@
 
 ## Book Club App
 
-- [`index.html`](index.html) — member lobby with current events, waiting-room count, and date.
+- [`index.html`](index.html) — member selects a roster name to enter the lobby, view current events, and see the waiting-room count and date.
 - [`admin.html`](admin.html) — admin feature selector for Voting and Debate.
 - [`voting.html`](voting.html) — voting member page; add `?admin=1234` for voting administration.
 - [`debate.html`](debate.html) — debate member, projection, and host modes.
