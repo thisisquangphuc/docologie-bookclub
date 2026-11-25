@@ -11,8 +11,8 @@ const appRoot = document.querySelector('#app');
 const state = {
   language:getLanguage(),
   settings:{},books:{},roster:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
-  memberId:sessionStorage.getItem('bookclub_member_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
-  subscriptions:[],resultInProgress:false,drawInProgress:false,lockInProgress:false,drawTicker:null,loaded:{},view:'vote'
+  memberId:sessionStorage.getItem('member_lobby_id') || sessionStorage.getItem('bookclub_member_id') || '',lobbyMemberId:sessionStorage.getItem('member_lobby_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
+  subscriptions:[],resultInProgress:false,drawInProgress:false,lockInProgress:false,clearingBallotId:'',drawTicker:null,loaded:{},view:'vote'
 };
 const t = key => translate(state.language,key);
 
@@ -102,7 +102,8 @@ function render() {
   document.querySelector('#rules-root').hidden = closed || showingResults;
   document.querySelector('#status').hidden = !isAdmin && showingResults;
   document.querySelector('#nav-history').hidden = !isAdmin && state.settings.membersCanViewHistory !== true;
-  if (state.memberId && state.loaded.roster && state.loaded.attendees && (!state.roster[state.memberId] || state.attendees[state.memberId] !== true)) clearMember();
+  const isKnownLobbyMember = state.memberId === state.lobbyMemberId && !!state.roster[state.memberId];
+  if (state.memberId && state.loaded.roster && state.loaded.attendees && (!state.roster[state.memberId] || state.attendees[state.memberId] !== true) && !isKnownLobbyMember) clearMember();
   recordMemberEntry();
   if (closed) state.view = 'vote';
   if (state.view === 'history' && !isAdmin && state.settings.membersCanViewHistory !== true) state.view = 'vote';
@@ -141,7 +142,7 @@ function render() {
     if (closed || showingResults) footerMessages.push(t('votingClosed'));
     else if (state.settings.requireFullBallot === true && state.draft.length < 3) footerMessages.push(t('selectAllThree'));
     else footerMessages.push(state.draft.length ? t('ready') : t('select'));
-    document.querySelector('#cast-bar').hidden = false;
+    document.querySelector('#cast-bar').hidden = !!state.memberId && state.memberId === state.lobbyMemberId && state.attendees[state.memberId] !== true;
     document.querySelector('#cast-hint').textContent = footerMessages.join(' · ');
     document.querySelector('#cast-label').textContent = closed || showingResults ? t('votingClosed') : ballot ? t('edit') : t('cast');
     document.querySelector('#cast-count').textContent = String(state.draft.length);
@@ -170,6 +171,7 @@ function handleClick(event) {
   else if (action === 'toggle-book') toggleDraft(bookId);
   else if (action === 'cast') castVote();
   else if (action === 'toggle-lock') toggleLock();
+  else if (action === 'clear-ballot') clearBallot(memberId);
   else if (action === 'finalize') finalizeResults();
   else if (action === 'draw-wildcard') playWildcardDraw();
   else if (action === 'start-next') startNextSession();
@@ -213,6 +215,10 @@ function findMemberByName(value) {
 
 function chooseMemberId(id) {
   if (!state.roster[id] || state.attendees[id] !== true) return;
+  if (id !== state.lobbyMemberId) {
+    state.lobbyMemberId = '';
+    sessionStorage.removeItem('member_lobby_id');
+  }
   state.memberId = id;
   state.initialDraftLoaded = true;
   state.draftDirty = false;
@@ -223,7 +229,9 @@ function chooseMemberId(id) {
 }
 
 function clearMember() {
+  if (sessionStorage.getItem('member_lobby_id') === state.memberId) sessionStorage.removeItem('member_lobby_id');
   state.memberId = '';
+  state.lobbyMemberId = '';
   state.draft = [];
   sessionStorage.removeItem('bookclub_member_id');
 }
@@ -298,11 +306,31 @@ async function toggleLock() {
     if (state.settings.locked === true) {await service.update({'settings/locked':false,'settings/votingOpen':true});return;}
     const sessionId = state.settings.sessionId || 'initial';
     const ballots = await service.read('current_ballots');
-    const finalBallots = Object.fromEntries(Object.entries(ballots).filter(([,ballot]) => ballot?.sessionId === sessionId));
+    const currentSessionBallots = Object.entries(ballots).filter(([,ballot]) => ballot?.sessionId === sessionId);
+    const offenders = currentSessionBallots.filter(([,ballot]) => Array.isArray(ballot.clientIds) && ballot.clientIds.length > 2);
+    if (offenders.length) {
+      const names = offenders.map(([id]) => memberName(state.roster,id) || t('unknownMember')).join(', ');
+      showFeedback(t('tooManyDevicesToClose').replace('{members}',names));
+      return;
+    }
+    const finalBallots = Object.fromEntries(currentSessionBallots);
     await service.update({[`session_ballots/${sessionId}`]:{sessionId,lockedAt:Date.now(),ballots:finalBallots},'settings/locked':true,'settings/votingOpen':false});
   }
   catch (error) {showError(error);}
   finally {state.lockInProgress = false;render();}
+}
+
+async function clearBallot(id) {
+  const sessionId = state.settings.sessionId || 'initial';
+  const ballot = state.ballots[id];
+  if (!isAdmin || !id || isVotingClosed(state) || state.pendingResults?.sessionId === sessionId || ballot?.sessionId !== sessionId || state.clearingBallotId) return;
+  const name = memberName(state.roster,id) || t('unknownMember');
+  if (!window.confirm(t('confirmClearVote').replace('{name}',name))) return;
+  state.clearingBallotId = id;
+  render();
+  try {await service.clearBallot(id);showFeedback(t('voteCleared').replace('{name}',name));}
+  catch (error) {showError(error);}
+  finally {state.clearingBallotId = '';render();}
 }
 
 async function toggleHistoryAccess() {

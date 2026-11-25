@@ -11,7 +11,7 @@ const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',stopSession:null};
+const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',stopSession:null};
 const t = key => translate(language,key);
 
 function mountView() {

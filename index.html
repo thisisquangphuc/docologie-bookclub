@@ -26,9 +26,10 @@
       <form id="member-entry-form" class="mt-5 space-y-3">
         <label for="member-name" class="block text-sm font-semibold">Your name</label>
         <select id="member-name" required class="w-full rounded-lg border border-neutral-300 bg-[#F7F6F2] p-3"><option value="">Loading members…</option></select>
-        <button class="w-full rounded-lg bg-neutral-900 px-4 py-3 font-semibold text-white">Enter lobby</button>
+        <button id="enter-lobby-button" class="w-full rounded-lg bg-neutral-900 px-4 py-3 font-semibold text-white disabled:opacity-50">Enter lobby</button>
       </form>
       <p id="member-entry-status" class="mt-3 text-sm text-[#71363C]" role="status"></p>
+      <button id="continue-lobby" type="button" hidden class="mt-3 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold">Continue anyway</button>
     </section>
     <div id="lobby-content" hidden class="space-y-6">
       <div class="flex items-center justify-between gap-3"><p id="welcome-member" class="text-sm text-neutral-600"></p><button id="change-member" class="rounded border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold">Change name</button></div>

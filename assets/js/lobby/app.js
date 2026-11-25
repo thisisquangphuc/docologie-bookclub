@@ -8,12 +8,17 @@ const loadingState = document.querySelector('#event-loading');
 const memberEntry = document.querySelector('#member-entry');
 const lobbyContent = document.querySelector('#lobby-content');
 const memberSelect = document.querySelector('#member-name');
+const enterButton = document.querySelector('#enter-lobby-button');
+const continueButton = document.querySelector('#continue-lobby');
 const locale = navigator.language || 'en-GB';
+const lobbyClientId = crypto.randomUUID();
 const events = {voting:null,debate:null};
 const eventSources = {voting:{loaded:false,error:false},debate:{loaded:false,error:false}};
 let roster = {};
 let selectedMemberId = sessionStorage.getItem('member_lobby_id') || '';
 let activeMemberId = '';
+let pendingMemberId = '';
+let checkingMemberId = '';
 let stopVoting;
 let stopDebate;
 let stopRoster;
@@ -81,8 +86,7 @@ function showError(message='Some live lobby information could not load. Check yo
   error.textContent = message;
 }
 
-function enterLobby() {
-  const memberId = memberSelect.value;
+function enterLobby(memberId) {
   if (!memberId || !roster[memberId]) {
     document.querySelector('#member-entry-status').textContent = 'Choose your name from the club member list.';
     return;
@@ -96,17 +100,47 @@ function enterLobby() {
   document.querySelector('#lobby-date').textContent = formatDate('');
   memberEntry.hidden = true;
   lobbyContent.hidden = false;
-  const clientId = crypto.randomUUID();
-  stopPresence = service.observeWaitingCount(memberId,clientId,count => {document.querySelector('#lobby-count').textContent = String(count);},showError);
+  stopPresence = service.observeWaitingCount(memberId,lobbyClientId,count => {document.querySelector('#lobby-count').textContent = String(count);},showError);
+}
+
+async function handleMemberEntry(event) {
+  event.preventDefault();
+  const memberId = memberSelect.value;
+  if (!memberId || !roster[memberId] || checkingMemberId) {
+    if (!memberId || !roster[memberId]) document.querySelector('#member-entry-status').textContent = 'Choose your name from the club member list.';
+    return;
+  }
+  checkingMemberId = memberId;
+  enterButton.disabled = true;
+  document.querySelector('#member-entry-status').textContent = 'Checking whether this name is already in the lobby…';
+  try {
+    const alreadyPresent = await service.isMemberInLobby(memberId,lobbyClientId);
+    if (memberSelect.value !== memberId) return;
+    if (alreadyPresent) {
+      pendingMemberId = memberId;
+      document.querySelector('#member-entry-status').textContent = 'This name is already in the lobby from another tab or device. Continue anyway?';
+      continueButton.hidden = false;
+      return;
+    }
+    enterLobby(memberId);
+  } catch {
+    document.querySelector('#member-entry-status').textContent = 'Could not check the lobby right now. Please try again.';
+  } finally {
+    checkingMemberId = '';
+    enterButton.disabled = false;
+  }
 }
 
 function returnToMemberEntry() {
   stopPresence?.();
   stopPresence = null;
+  pendingMemberId = '';
+  continueButton.hidden = true;
   activeMemberId = '';
   selectedMemberId = '';
   sessionStorage.removeItem('member_lobby_id');
   document.querySelector('#lobby-count').textContent = '0';
+  document.querySelector('#member-entry-status').textContent = '';
   lobbyContent.hidden = true;
   memberEntry.hidden = false;
   populateMemberSelect();
@@ -119,8 +153,19 @@ function showEventError(kind) {
 }
 
 document.querySelector('#member-entry-form').addEventListener('submit',event => {
-  event.preventDefault();
-  enterLobby();
+  void handleMemberEntry(event);
+});
+continueButton.addEventListener('click',() => {
+  if (!pendingMemberId) return;
+  const memberId = pendingMemberId;
+  pendingMemberId = '';
+  continueButton.hidden = true;
+  enterLobby(memberId);
+});
+memberSelect.addEventListener('change',() => {
+  pendingMemberId = '';
+  continueButton.hidden = true;
+  document.querySelector('#member-entry-status').textContent = '';
 });
 document.querySelector('#change-member').addEventListener('click',returnToMemberEntry);
 document.querySelector('#lobby-date').textContent = formatDate('');

@@ -15,6 +15,10 @@ Object.assign(translations.de, {
 });
 
 Object.assign(translations.en,{ballotSummary:'Members who opened the voting page',addToSession:'Add'});
+Object.assign(translations.en,{auditHint:'Review duplicate devices. Clear a member’s vote if they need to vote again.',clearVote:'Clear vote',confirmClearVote:'Clear {name}’s vote? They can vote again after this.',voteCleared:'Cleared {name}’s vote. They can vote again now.',clearDuplicatesFirst:'Clear votes from 3+ devices first',tooManyDevicesToClose:'Cannot close voting yet. Clear votes with more than 2 devices for: {members}.',unknownMember:'Unlisted member'});
+Object.assign(translations.de,{auditHint:'Prüfe doppelte Geräte. Lösche die Stimme eines Mitglieds, wenn es erneut abstimmen muss.',clearVote:'Stimme löschen',confirmClearVote:'Stimme von {name} löschen? Danach kann erneut abgestimmt werden.',voteCleared:'Stimme von {name} gelöscht. Eine neue Abstimmung ist jetzt möglich.',clearDuplicatesFirst:'Stimmen mit 3+ Geräten zuerst löschen',tooManyDevicesToClose:'Abstimmung noch nicht schließen. Lösche Stimmen mit mehr als 2 Geräten für: {members}.',unknownMember:'Unbekanntes Mitglied'});
+Object.assign(translations.en,{notAddedToVoting:'You are in the lobby as {name}, but the host has not added you to this voting session yet.'});
+Object.assign(translations.de,{notAddedToVoting:'Du bist als {name} in der Lobby, aber noch nicht zur Abstimmungsrunde hinzugefügt.'});
 Object.assign(translations.de,{ballotSummary:'Mitglieder, die die Abstimmungsseite geöffnet haben',addToSession:'Hinzufügen',resultsKicker:'Abstimmungsergebnisse des Buchclubs'});
 Object.assign(translations.en,{priorityRule:'Priority: passed over at least twice',notSelectedLastSession:'Not selected in the previous session'});
 Object.assign(translations.de,{priorityRule:'Priorität: mindestens zweimal übergangen',notSelectedLastSession:'In der letzten Runde nicht ausgewählt'});
@@ -45,3 +49,6 @@ export function setLanguage(language) {
 export function translate(language, key) {
   return translations[language]?.[key] || translations.en[key] || key;
 }
+
+Object.assign(translations.en,{liveScoreTitle:'Live vote points',noLiveScoreOptions:'No active options in this session.'});
+Object.assign(translations.de,{liveScoreTitle:'Live-Stimmen',noLiveScoreOptions:'Keine aktiven Optionen in dieser Runde.'});

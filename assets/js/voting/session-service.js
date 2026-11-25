@@ -14,6 +14,7 @@ export function createVotingService(database) {
     addBook: book => database.ref('books_pool').push().set(book),
     setBookActive: (id, active) => database.ref(`books_pool/${id}/active`).set(active),
     removeBook: id => database.ref(`books_pool/${id}`).remove(),
+    clearBallot: id => database.ref(`current_ballots/${id}`).remove(),
     setMemberAttendance: (id, attending) => attending ? database.ref(`current_session_members/${id}`).set(true) : database.ref().update({[`current_session_members/${id}`]:null,[`current_session_presence/${id}`]:null,[`current_ballots/${id}`]:null}),
     castBallot: (id, makeBallot) => database.ref(`current_ballots/${id}`).transaction(makeBallot),
     recordMemberEntry: (id, sessionId, clientId) => database.ref(`current_session_presence/${id}`).transaction(old => {

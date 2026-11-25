@@ -33,6 +33,11 @@ export function createLobbyService(database) {
     observeRoster(onValue, onError) {
       return observe('member_roster',onValue,onError);
     },
+    async isMemberInLobby(memberId, ownClientId) {
+      const snapshot = await database.ref(`lobby_presence/${memberId}`).once('value');
+      const sessions = snapshot.val() || {};
+      return Object.keys(sessions).some(clientId => clientId !== ownClientId);
+    },
     observeWaitingCount(memberId, clientId, onValue, onError) {
       const presenceRef = database.ref(`lobby_presence/${memberId}/${clientId}`);
       const connectionRef = database.ref('.info/connected');
