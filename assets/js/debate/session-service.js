@@ -41,6 +41,12 @@ export function createDebateService(database) {
     async updateSession(sessionRef, values) {
       return sessionRef.update(values);
     },
+    async activateSession(sessionId) {
+      return database.ref('active_debate_session').set(sessionId);
+    },
+    async clearActiveSession(sessionId) {
+      return database.ref('active_debate_session').transaction(current => current === sessionId ? null : current);
+    },
     async writeTimer(sessionRef, value, merge = false) {
       const timerRef = sessionRef.child('timer');
       return merge ? timerRef.update(value) : timerRef.set(value);

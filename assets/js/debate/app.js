@@ -15,6 +15,7 @@ const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.ge
 const t = key => translate(language,key);
 
 function mountView() {
+  document.querySelector('#home-link').href = canHost ? 'admin.html' : 'index.html';
   document.querySelector('#language').value = language;
   document.querySelector('#page-title').textContent = t('title');
   document.title = t('title');
@@ -95,23 +96,32 @@ async function handleCreateSession(event) {
 }
 
 async function saveSession(update) {
-  if (!state.sessionRef) return;
-  try { await service.updateSession(state.sessionRef,update); }
-  catch { showError(); }
+  if (!state.sessionRef) return false;
+  try { await service.updateSession(state.sessionRef,update); return true; }
+  catch { showError(); return false; }
 }
-function startRound(number) {
+async function startRound(number) {
   if (!canHost || !state.sessionRef) return;
   if (number === 1 && state.session.round !== 'setup') return;
   if (number === 2 && (state.session.round !== '1' || !roundComplete('1'))) return;
-  void saveSession({round:String(number),status:'live',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  const saved = await saveSession({round:String(number),status:'live',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  if (saved && number === 1) {
+    try { await service.activateSession(state.sessionRef.key); }
+    catch { showError(); }
+  }
 }
 function openReflection() {
   if (!canHost || !state.sessionRef || state.session.round !== '2' || !roundComplete('2')) return;
   void saveSession({round:'reflection',status:'reflection',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
-function endWorkshop() {
+async function endWorkshop() {
   if (!canHost || !state.sessionRef || !confirm(`${t('endSession')}?`)) return;
-  void saveSession({round:'ended',status:'ended',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  const sessionId = state.sessionRef.key;
+  const saved = await saveSession({round:'ended',status:'ended',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  if (saved) {
+    try { await service.clearActiveSession(sessionId); }
+    catch { showError(); }
+  }
 }
 function roundComplete(round) {
   const participants = Object.keys(state.session?.participants || {});
@@ -186,10 +196,10 @@ app.addEventListener('click',event=>{
   const control=event.target.closest('[data-action]');
   const action=control?.dataset.action;
   const speakerId=control?.dataset.speakerId;
-  if(action==='start-round1')startRound(1);
-  else if(action==='start-round2')startRound(2);
+  if(action==='start-round1')void startRound(1);
+  else if(action==='start-round2')void startRound(2);
   else if(action==='reflection')openReflection();
-  else if(action==='end-workshop')endWorkshop();
+  else if(action==='end-workshop')void endWorkshop();
   else if(action==='start-turn')void startTurn(speakerId);
   else if(action==='pause-turn')void pauseTurn(speakerId);
   else if(action==='resume-turn')void resumeTurn(speakerId);

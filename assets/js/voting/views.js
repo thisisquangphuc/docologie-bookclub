@@ -9,7 +9,7 @@ export function memberName(roster, id) {
 
 export function isVotingClosed(state) {
   const sessionId = state.settings.sessionId || 'initial';
-  return state.settings.locked === true || state.pendingResults?.sessionId === sessionId;
+  return state.settings.locked === true || state.settings.votingOpen === false || state.pendingResults?.sessionId === sessionId;
 }
 
 export function isWildcardDrawPending(state) {

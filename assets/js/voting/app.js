@@ -22,6 +22,8 @@ subscribe();
 
 function mount() {
   document.documentElement.lang = state.language;
+  document.querySelector('#home-link').href = isAdmin ? 'admin.html' : 'index.html';
+  document.querySelector('#home-link').textContent = isAdmin ? 'Docologie · Book Club · Admin Dashboard' : 'Docologie · Book Club · Member Lobby';
   document.querySelector('#page-title').textContent = getAppTitle();
   updateDocumentTitle();
   document.querySelector('#counter span').textContent = t('selected');
@@ -73,7 +75,7 @@ function subscribe() {
   observe('settings','settings',() => {
     if (isAdmin && !state.settings.sessionId) {
       const date = new Date().toISOString().slice(0,10);
-      service.update({'settings/sessionId':crypto.randomUUID(),'settings/sessionNumber':Object.keys(state.history).length+1,'settings/sessionDate':date}).catch(showError);
+      service.update({'settings/sessionId':crypto.randomUUID(),'settings/sessionNumber':Object.keys(state.history).length+1,'settings/sessionDate':date,'settings/locked':true,'settings/votingOpen':false}).catch(showError);
     }
   });
   observe('books_pool','books');
@@ -293,11 +295,11 @@ async function toggleLock() {
   if (state.lockInProgress || state.pendingResults?.sessionId === (state.settings.sessionId || 'initial')) return;
   state.lockInProgress = true;
   try {
-    if (state.settings.locked === true) {await service.set('settings/locked',false);return;}
+    if (state.settings.locked === true) {await service.update({'settings/locked':false,'settings/votingOpen':true});return;}
     const sessionId = state.settings.sessionId || 'initial';
     const ballots = await service.read('current_ballots');
     const finalBallots = Object.fromEntries(Object.entries(ballots).filter(([,ballot]) => ballot?.sessionId === sessionId));
-    await service.update({[`session_ballots/${sessionId}`]:{sessionId,lockedAt:Date.now(),ballots:finalBallots},'settings/locked':true});
+    await service.update({[`session_ballots/${sessionId}`]:{sessionId,lockedAt:Date.now(),ballots:finalBallots},'settings/locked':true,'settings/votingOpen':false});
   }
   catch (error) {showError(error);}
   finally {state.lockInProgress = false;render();}
@@ -430,7 +432,7 @@ async function completeResults(result) {
   const updates = {
     pending_results:{...result,archivedAt:now},
     [`history/${result.sessionId}`]:{...result,archivedAt:now,date:new Date(result.drawnAt || result.preparedAt || now).toISOString().slice(0,10)},
-    'settings/showResults':true,'settings/locked':true,'settings/archivedSessionId':result.sessionId
+    'settings/showResults':true,'settings/locked':true,'settings/votingOpen':false,'settings/archivedSessionId':result.sessionId
   };
   (result.sessionSelections || []).forEach(book => {
     if (!existingBooks[book.id]) return;
@@ -446,7 +448,7 @@ async function completeResults(result) {
 async function startNextSession() {
   if (state.settings.archivedSessionId !== (state.settings.sessionId || 'initial') || state.pendingResults?.sessionId !== state.settings.archivedSessionId) return;
   if (!window.confirm(t('confirm'))) return;
-  const nextSettings = {...state.settings,sessionId:crypto.randomUUID(),sessionNumber:(Number(state.settings.sessionNumber) || Object.keys(state.history).length || 1)+1,sessionDate:new Date().toISOString().slice(0,10),locked:false,showResults:false,archivedSessionId:null};
+  const nextSettings = {...state.settings,sessionId:crypto.randomUUID(),sessionNumber:(Number(state.settings.sessionNumber) || Object.keys(state.history).length || 1)+1,sessionDate:new Date().toISOString().slice(0,10),locked:true,votingOpen:false,showResults:false,archivedSessionId:null};
   const updates = {settings:nextSettings,current_ballots:null,current_session_members:null,current_session_presence:null,pending_results:null};
   Object.keys(state.books).forEach(id => updates[`books_pool/${id}/active`] = false);
   try {await service.update(updates);state.draft = [];showVote();setAdminTab('overview');}

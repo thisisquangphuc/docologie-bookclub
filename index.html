@@ -4,33 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#F7F6F2">
-  <title>Docologie · Admin Dashboard</title>
+  <title>Docologie · Member Lobby</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <style>body{background:#F7F6F2;color:#18181B;font-family:Inter,sans-serif}.serif{font-family:'Playfair Display',Georgia,serif}a:focus-visible{outline:2px solid #18181B;outline-offset:3px}</style>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <link rel="stylesheet" href="assets/css/debate.css">
 </head>
 <body class="min-h-screen">
   <header class="bg-[#111] text-white">
-    <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5">
-      <div><p class="text-xs uppercase tracking-[.2em] text-neutral-400">Docologie · Book Club</p><h1 class="serif mt-1 text-2xl">Admin Dashboard</h1></div>
-      <span class="rounded bg-[#71363C] px-2 py-1 text-[10px] font-bold tracking-widest">ADMIN MODE</span>
+    <div class="mx-auto max-w-4xl px-5 py-5">
+      <div><p class="text-xs uppercase tracking-[.2em] text-neutral-400">Docologie · Book Club</p><h1 class="serif mt-1 text-2xl">Member Lobby</h1></div>
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-5 py-12">
-    <p class="mb-6 text-sm text-neutral-500">Choose which book club activity to manage.</p>
-    <div class="grid max-w-3xl grid-cols-1 gap-5 sm:grid-cols-2">
-      <a href="voting.html?admin=1234" class="flex aspect-square flex-col justify-between rounded-2xl border border-[#E2E0D8] bg-white p-6 transition hover:border-neutral-900 hover:shadow-lg sm:p-8">
-        <span class="text-xs font-semibold uppercase tracking-[.2em] text-neutral-500">01 · Book selection</span>
-        <span><span class="serif block text-4xl">Voting</span><span class="mt-3 block max-w-xs text-sm leading-6 text-neutral-500">Manage the voting session, books, members, and results.</span></span>
-        <span class="text-sm font-semibold">Open voting settings <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="debate.html?mode=host&admin=1234" class="flex aspect-square flex-col justify-between rounded-2xl border border-[#E2E0D8] bg-white p-6 transition hover:border-neutral-900 hover:shadow-lg sm:p-8">
-        <span class="text-xs font-semibold uppercase tracking-[.2em] text-neutral-500">02 · Group discussion</span>
-        <span><span class="serif block text-4xl">Debate</span><span class="mt-3 block max-w-xs text-sm leading-6 text-neutral-500">Set up statements and host the debate workshop.</span></span>
-        <span class="text-sm font-semibold">Open host dashboard <span aria-hidden="true">→</span></span>
-      </a>
-    </div>
+  <main class="mx-auto max-w-4xl space-y-6 px-5 py-8">
+    <section class="grid gap-3 sm:grid-cols-2">
+      <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Today</p><p id="lobby-date" class="serif mt-2 text-xl"></p></article>
+      <article class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p class="text-xs font-semibold uppercase tracking-widest text-neutral-500">Active visitors</p><p class="serif mt-2 text-3xl"><span id="lobby-count">0</span><span class="ml-2 text-base font-normal text-neutral-500">in the lobby</span></p></article>
+    </section>
+    <section><div class="mb-3"><p class="text-xs font-semibold uppercase tracking-widest text-[#71363C]">Book Club</p><h2 class="serif mt-1 text-2xl">Events</h2></div><p id="lobby-error" hidden class="mb-3 text-sm text-[#71363C]" role="status"></p><div id="event-list" class="space-y-3"></div><div id="empty-state" hidden class="rounded-xl border border-dashed border-neutral-300 bg-white/70 p-8 text-center"><p class="serif text-xl">No events are happening right now.</p><p class="mt-2 text-sm text-neutral-500">Check back when the host opens a vote or starts a debate workshop.</p></div></section>
   </main>
+  <script type="module" src="assets/js/lobby/app.js"></script>
 </body>
 </html>

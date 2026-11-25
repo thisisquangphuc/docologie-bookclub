@@ -1,6 +1,6 @@
 # Debate Workshop Feature
 
-The debate workshop is a separate, buildless page at `debate.html`. The root `index.html` dashboard links to its host mode. It shares the club member roster but stores workshop state under `/debate_sessions`, separate from book voting data.
+The debate workshop is a separate, buildless page at `debate.html`. The admin feature selector is `admin.html`; the member lobby is `index.html`. It shares the club member roster but stores workshop state under `/debate_sessions`, separate from book voting data. The lobby advertises a debate only after the host starts Round 1; the active session ID is published at `/active_debate_session`.
 
 ## Entry modes
 

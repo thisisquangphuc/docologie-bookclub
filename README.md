@@ -8,6 +8,11 @@
 - **Firebase Realtime Database** — real-time data synchronization.
 - **Playfair Display** and **Inter** — typefaces served by Google Fonts.
 
-## Debate Workshop
+## Book Club App
 
-The root [`index.html`](index.html) is the admin dashboard for Voting and Debate. Voting is available at [`voting.html`](voting.html); the workshop is at [`debate.html`](debate.html). See the [feature guide](docs/debate-workshop.md) for its screen modes, data boundaries, and module responsibilities.
+- [`index.html`](index.html) — member lobby with current events, waiting-room count, and date.
+- [`admin.html`](admin.html) — admin feature selector for Voting and Debate.
+- [`voting.html`](voting.html) — voting member page; add `?admin=1234` for voting administration.
+- [`debate.html`](debate.html) — debate member, projection, and host modes.
+
+See the [Debate Workshop guide](docs/debate-workshop.md) for its screen modes, event lifecycle, and module responsibilities.
