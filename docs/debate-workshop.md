@@ -1,6 +1,6 @@
 # Debate Workshop Feature
 
-The debate workshop is a separate, buildless page at `debate.html`. It shares the club member roster but stores workshop state under `/debate_sessions`, separate from book voting data.
+The debate workshop is a separate, buildless page at `debate.html`. The root `index.html` dashboard links to its host mode. It shares the club member roster but stores workshop state under `/debate_sessions`, separate from book voting data.
 
 ## Entry modes
 
@@ -23,4 +23,4 @@ The page uses native ES modules and relative URLs. It requires no package manage
 
 ## Session flow
 
-The host enters one statement per round and creates a session. Members join from the shared roster. Round 1 choices can be changed; Round 2 choices are written once. The host chooses each speaker and operates the three-minute timer. The projection view shows only aggregate side counts, the current statement, speaker, timer, and reflection questions. Round 2 rule 3 remains unspecified until the club supplies it.
+The host enters one statement per round and creates a session. Members join from the shared roster. Round 1 choices can be changed; Round 2 choices are written once. The host dashboard shows Round 1 above Round 2, each with per-speaker start, pause, resume, and finish controls. Round 2 stays unavailable until every joined participant has completed their Round 1 turn; the Round 1 card is dimmed after advancing. The projection view shows only aggregate side counts, the current statement, speaker, timer, and reflection questions. Round 2 rule 3 remains unspecified until the club supplies it.

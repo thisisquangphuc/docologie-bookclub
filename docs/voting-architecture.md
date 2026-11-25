@@ -1,6 +1,6 @@
 # Voting Architecture
 
-The book voting app is a buildless GitHub Pages entry point. `index.html` owns the page shell and loads the native ES module at `assets/js/voting/app.js`.
+The book voting app is a buildless GitHub Pages entry point. `voting.html` owns the page shell and loads the native ES module at `assets/js/voting/app.js`. The root `index.html` is the admin feature dashboard and links to Voting in admin mode.
 
 ## Module ownership
 

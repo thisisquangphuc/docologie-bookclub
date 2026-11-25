@@ -11,7 +11,7 @@ const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||'',selectedSpeakerId:'',joinId:'',stopSession:null};
+const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',stopSession:null};
 const t = key => translate(language,key);
 
 function mountView() {
@@ -101,47 +101,44 @@ async function saveSession(update) {
 }
 function startRound(number) {
   if (!canHost || !state.sessionRef) return;
-  if ((number === 1 && state.session.round !== 'setup') || (number === 2 && state.session.round !== '1')) return;
-  state.selectedSpeakerId = '';
+  if (number === 1 && state.session.round !== 'setup') return;
+  if (number === 2 && (state.session.round !== '1' || !roundComplete('1'))) return;
   void saveSession({round:String(number),status:'live',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
 function openReflection() {
-  if (!canHost || !state.sessionRef || state.session.round !== '2') return;
+  if (!canHost || !state.sessionRef || state.session.round !== '2' || !roundComplete('2')) return;
   void saveSession({round:'reflection',status:'reflection',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
 function endWorkshop() {
   if (!canHost || !state.sessionRef || !confirm(`${t('endSession')}?`)) return;
   void saveSession({round:'ended',status:'ended',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
-function chooseSpeaker(id) {
-  if (!canHost || !['1','2'].includes(String(state.session?.round)) || state.session.turns?.[state.session.round]?.[id]) return;
-  state.selectedSpeakerId = id;
-  render();
+function roundComplete(round) {
+  const participants = Object.keys(state.session?.participants || {});
+  return participants.length > 0 && participants.every(id => state.session?.turns?.[round]?.[id]);
 }
-async function startTurn() {
-  if (!canHost || !state.selectedSpeakerId || state.session.timer?.speakerId) return;
+async function startTurn(speakerId) {
+  if (!canHost || !speakerId || state.session.timer?.speakerId) return;
   const round = String(state.session.round);
-  if (state.session.turns?.[round]?.[state.selectedSpeakerId]) return;
-  try { await service.writeTimer(state.sessionRef,{speakerId:state.selectedSpeakerId,startedAt:Date.now(),endsAt:Date.now()+ROUND_DURATION_MS,remainingMs:ROUND_DURATION_MS,running:true,paused:false}); }
+  if (!['1','2'].includes(round) || state.session.turns?.[round]?.[speakerId]) return;
+  try { await service.writeTimer(state.sessionRef,{speakerId,startedAt:Date.now(),endsAt:Date.now()+ROUND_DURATION_MS,remainingMs:ROUND_DURATION_MS,running:true,paused:false}); }
   catch { showError(); }
 }
-async function pauseTurn() {
-  if (!state.session.timer?.running) return;
+async function pauseTurn(speakerId) {
+  if (state.session.timer?.speakerId !== speakerId || !state.session.timer?.running) return;
   const remainingMs = Math.max(0,state.session.timer.endsAt-Date.now());
   try { await service.writeTimer(state.sessionRef,{remainingMs,endsAt:null,running:false,paused:true},true); }
   catch { showError(); }
 }
-async function resumeTurn() {
-  if (!state.session.timer?.paused) return;
+async function resumeTurn(speakerId) {
+  if (state.session.timer?.speakerId !== speakerId || !state.session.timer?.paused) return;
   const remainingMs = Math.max(0,state.session.timer.remainingMs||0);
   try { await service.writeTimer(state.sessionRef,{endsAt:Date.now()+remainingMs,running:true,paused:false},true); }
   catch { showError(); }
 }
-async function finishTurn() {
-  const speakerId = state.session.timer?.speakerId;
-  if (!canHost || !speakerId) return;
+async function finishTurn(speakerId) {
+  if (!canHost || !speakerId || state.session.timer?.speakerId !== speakerId) return;
   const round = String(state.session.round);
-  state.selectedSpeakerId = '';
   await saveSession({[`turns/${round}/${speakerId}`]:true,timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
 async function chooseSide(side) {
@@ -159,7 +156,10 @@ function updateTimer() {
   const timer = state.session?.timer || {};
   const remainingMs = timer.running ? Math.max(0,(timer.endsAt||0)-Date.now()) : timer.paused ? Math.max(0,timer.remainingMs||0) : ROUND_DURATION_MS;
   const value = formatTime(remainingMs);
-  const hostTimer=app.querySelector('#host-timer'); if(hostTimer)hostTimer.textContent=value;
+  for (const round of ['1','2']) {
+    const hostTimer=app.querySelector(`#host-timer-${round}`);
+    if(hostTimer)hostTimer.textContent=String(state.session?.round)===round?value:'03:00';
+  }
   const displayTimer=app.querySelector('#display-timer'); if(displayTimer)displayTimer.textContent=timer.speakerId?value:'';
   const memberTimer=app.querySelector('#member-timer'); if(memberTimer)memberTimer.textContent=timer.speakerId?value:'';
 }
@@ -183,17 +183,17 @@ app.addEventListener('submit',event=>{
 app.addEventListener('click',event=>{
   const side=event.target.closest('[data-side]');
   if(side){void chooseSide(side.dataset.side);return;}
-  const speaker=event.target.closest('[data-speaker]');
-  if(speaker&&!speaker.disabled){chooseSpeaker(speaker.dataset.speaker);return;}
-  const action=event.target.closest('[data-action]')?.dataset.action;
+  const control=event.target.closest('[data-action]');
+  const action=control?.dataset.action;
+  const speakerId=control?.dataset.speakerId;
   if(action==='start-round1')startRound(1);
   else if(action==='start-round2')startRound(2);
   else if(action==='reflection')openReflection();
   else if(action==='end-workshop')endWorkshop();
-  else if(action==='start-turn')void startTurn();
-  else if(action==='pause-turn')void pauseTurn();
-  else if(action==='resume-turn')void resumeTurn();
-  else if(action==='finish-turn')void finishTurn();
+  else if(action==='start-turn')void startTurn(speakerId);
+  else if(action==='pause-turn')void pauseTurn(speakerId);
+  else if(action==='resume-turn')void resumeTurn(speakerId);
+  else if(action==='finish-turn')void finishTurn(speakerId);
   else if(action==='copy-link')void copyJoinLink();
 });
 document.querySelector('#language').addEventListener('change',event=>{localStorage.setItem('debate_language',event.target.value);location.reload();});

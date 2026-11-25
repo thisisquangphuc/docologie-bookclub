@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book Club — Session Voting</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <link rel="stylesheet" href="./assets/css/voting.css">
+</head>
+<body class="min-h-screen pb-28">
+  <header class="sticky top-0 z-30 bg-[#111] text-white">
+    <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
+      <div>
+        <a href="index.html" class="text-xs uppercase tracking-widest text-neutral-400 hover:text-white">Docologie · Book Club · Dashboard</a>
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 id="page-title" class="serif text-2xl"></h1>
+          <span id="admin-mode-root"></span>
+          <span id="rules-root"></span>
+        </div>
+        <p id="status" class="text-xs text-neutral-400" aria-live="polite"></p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="counter" class="text-sm"><span data-i18n="selected"></span> <b id="selected">0</b>/3</span>
+        <label class="sr-only" for="language">Language</label>
+        <select id="language" class="rounded border border-neutral-700 bg-[#111] px-2 py-1 text-sm text-white">
+          <option value="en">EN</option>
+          <option value="de">DE</option>
+        </select>
+      </div>
+    </div>
+    <nav id="main-nav" class="mx-auto flex max-w-3xl border-t border-neutral-800" aria-label="Main navigation">
+      <button id="nav-vote" class="flex-1 border-b-2 border-white py-3" data-action="show-vote" data-i18n="current"></button>
+      <button id="nav-history" class="flex-1 border-b-2 border-transparent py-3 text-neutral-400" data-action="show-history" data-i18n="archive"></button>
+    </nav>
+  </header>
+  <main class="mx-auto max-w-3xl space-y-6 px-4 py-6">
+    <div id="app"></div>
+    <section id="history-view" hidden>
+      <p class="text-xs uppercase tracking-widest text-neutral-500" data-i18n="archiveKicker"></p>
+      <h2 class="serif mb-4 text-3xl" data-i18n="archive"></h2>
+      <div id="history-list" class="space-y-4"></div>
+    </section>
+  </main>
+  <div id="cast-bar" hidden class="fixed inset-x-0 bottom-0 border-t border-neutral-300 bg-white/95 p-3">
+    <div class="mx-auto flex max-w-3xl items-center justify-between gap-3">
+      <span id="cast-hint" class="min-w-0 flex-1 text-xs leading-4 text-neutral-600 sm:text-sm"></span>
+      <button id="cast-btn" data-action="cast" class="shrink-0 rounded bg-neutral-900 px-3 py-3 text-xs font-bold text-white disabled:bg-neutral-300 sm:px-5 sm:text-sm">
+        <span id="cast-label"></span> (<span id="cast-count">0</span>/3)
+      </button>
+    </div>
+  </div>
+  <script type="module" src="./assets/js/voting/app.js"></script>
+</body>
+</html>

@@ -10,4 +10,4 @@
 
 ## Debate Workshop
 
-The workshop experience is available at [`debate.html`](debate.html). See the [feature guide](docs/debate-workshop.md) for its screen modes, data boundaries, and module responsibilities.
+The root [`index.html`](index.html) is the admin dashboard for Voting and Debate. Voting is available at [`voting.html`](voting.html); the workshop is at [`debate.html`](debate.html). See the [feature guide](docs/debate-workshop.md) for its screen modes, data boundaries, and module responsibilities.
