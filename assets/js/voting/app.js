@@ -1,7 +1,7 @@
 import {getClientId, initializeDatabase, isAdminMode} from './config.js';
 import {getLanguage, setLanguage, translate} from './i18n.js';
 import {createVotingService} from './session-service.js';
-import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
+import {createAdminBallotRuleMarkup, createAdminMarkup, createAdminOptionSettingsMarkup, createAdminSessionInfoMarkup, createAdminVoteVisibilityMarkup, createMemberMarkup, isVotingClosed, isWildcardDrawPending, memberName, renderAdmin, renderBooks, renderHistory, renderIdentity, renderResults, renderWildcardDraw} from './views.js';
 
 const database = initializeDatabase();
 const service = createVotingService(database);
@@ -37,6 +37,7 @@ function mount() {
     document.querySelector('#admin-overview').insertAdjacentHTML('afterbegin',createAdminSessionInfoMarkup(t));
     document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminOptionSettingsMarkup(t));
     document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminBallotRuleMarkup(t));
+    document.querySelector('#admin-settings').insertAdjacentHTML('beforeend',createAdminVoteVisibilityMarkup(t));
   }
   bindMemberSelect();
   if (isAdmin) setAdminTab(state.adminTab);
@@ -109,7 +110,7 @@ function render() {
   document.querySelector('#nav-history').className = `flex-1 border-b-2 py-3 ${state.view === 'history' ? 'border-white' : 'border-transparent text-neutral-400'}`;
   if (state.view === 'history') {
     document.querySelector('#cast-bar').hidden = true;
-    renderHistory(state,t);
+    renderHistory(state,t,isAdmin || state.settings.memberVoteCountsVisible === true);
     syncWildcardTicker();
     return;
   }
@@ -146,7 +147,7 @@ function render() {
   }
   if (isAdmin) document.querySelector('#cast-bar').hidden = true;
   document.querySelector('#selected').textContent = String(state.draft.length);
-  renderHistory(state,t);
+  renderHistory(state,t,isAdmin || state.settings.memberVoteCountsVisible === true);
   syncWildcardTicker();
 }
 
@@ -178,6 +179,8 @@ function handleClick(event) {
   else if (action === 'remove-book') removeBook(bookId);
   else if (action === 'open-rules') document.querySelector('#rules-dialog')?.showModal();
   else if (action === 'close-rules') document.querySelector('#rules-dialog')?.close();
+  else if (action === 'open-admin-flow') document.querySelector('#admin-flow-dialog')?.showModal();
+  else if (action === 'close-admin-flow') document.querySelector('#admin-flow-dialog')?.close();
 }
 
 function handleChange(event) {
@@ -186,6 +189,7 @@ function handleChange(event) {
   else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
   else if (event.target.matches('[data-action="toggle-book-deletion"]')) toggleBookDeletion();
   else if (event.target.matches('[data-action="toggle-full-ballot"]')) toggleFullBallotRequirement();
+  else if (event.target.matches('[data-action="toggle-vote-counts"]')) toggleMemberVoteCounts();
   else if (event.target.matches('#max-top-books')) setMaxTopBooks(event.target.value);
 }
 
@@ -316,6 +320,11 @@ async function toggleBookDeletion() {
 
 async function toggleFullBallotRequirement() {
   try {await service.set('settings/requireFullBallot',state.settings.requireFullBallot !== true);}
+  catch (error) {showError(error);}
+}
+
+async function toggleMemberVoteCounts() {
+  try {await service.set('settings/memberVoteCountsVisible',state.settings.memberVoteCountsVisible !== true);}
   catch (error) {showError(error);}
 }
 
@@ -468,7 +477,7 @@ function setAdminTab(tab) {
   }
   document.querySelectorAll('.admin-tab').forEach(button => {
     const active = button.dataset.tab === state.adminTab;
-    button.className = `admin-tab rounded px-4 py-2.5 text-sm font-semibold ${active ? 'bg-[#71363C] text-white' : 'border border-neutral-200 text-neutral-600 hover:border-[#71363C]'}`;
+    button.className = `admin-tab shrink-0 rounded px-4 py-2.5 text-sm font-semibold ${active ? 'bg-[#71363C] text-white' : 'border border-neutral-200 text-neutral-600 hover:border-[#71363C]'}`;
   });
 }
 
