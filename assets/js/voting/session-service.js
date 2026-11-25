@@ -9,9 +9,25 @@ export function createVotingService(database) {
   return {
     observe,
     read: path => database.ref(path).once('value').then(snapshot => snapshot.val() || {}),
-    addMember: member => database.ref('member_roster').push().set(member),
+    addMember: (member, security) => {
+      const id = database.ref('member_roster').push().key;
+      const updates = {[`member_roster/${id}`]:member};
+      if (security) {
+        updates[`member_security_questions/${id}`] = {questionId:security.questionId,salt:security.salt};
+        updates[`member_security_secrets/${id}/answerHash`] = security.answerHash;
+      }
+      return database.ref().update(updates).then(() => id);
+    },
+    updateMember: (id, member, security) => {
+      const updates = {[`member_roster/${id}`]:member};
+      if (security) {
+        updates[`member_security_questions/${id}`] = {questionId:security.questionId,salt:security.salt};
+        updates[`member_security_secrets/${id}/answerHash`] = security.answerHash;
+      }
+      return database.ref().update(updates);
+    },
     removeMember: id => database.ref().update({[`member_roster/${id}`]:null,[`member_security_questions/${id}`]:null,[`member_security_secrets/${id}`]:null,[`member_security_proofs/${id}`]:null,[`current_session_members/${id}`]:null,[`current_session_presence/${id}`]:null,[`current_ballots/${id}`]:null}),
-    setMemberSecurity: (id, questionId, salt, answerHash) => database.ref().update({[`member_security_questions/${id}`]:{questionId,salt},[`member_security_secrets/${id}/answerHash`]:answerHash}),
+    clearMemberSecurity: id => database.ref().update({[`member_security_questions/${id}`]:null,[`member_security_secrets/${id}`]:null,[`member_security_proofs/${id}`]:null}),
     addBook: book => database.ref('books_pool').push().set(book),
     setBookActive: (id, active) => database.ref(`books_pool/${id}/active`).set(active),
     removeBook: id => database.ref(`books_pool/${id}`).remove(),

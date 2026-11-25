@@ -23,8 +23,9 @@ Use the already configured admin UID from `assets/js/shared/admin-auth.js` for t
   "member_security_proofs": {
     "$memberId": {
       ".read": false,
+      ".write": "auth != null && auth.uid === '97RsSwsyj9RGSHjHdDnftbudlhW2'",
       "$clientId": {
-        ".write": "newData.isString() && root.child('member_security_questions').child($memberId).exists() && newData.val() === root.child('member_security_secrets').child($memberId).child('answerHash').val()"
+        ".write": "auth != null && auth.uid === '97RsSwsyj9RGSHjHdDnftbudlhW2' || (newData.isString() && root.child('member_security_questions').child($memberId).exists() && newData.val() === root.child('member_security_secrets').child($memberId).child('answerHash').val())"
       }
     }
   }

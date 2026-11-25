@@ -12,7 +12,7 @@ const clientId = getClientId();
 const appRoot = document.querySelector('#app');
 const state = {
   language:getLanguage(),
-  settings:{},books:{},roster:{},securityQuestions:{},memberSecurityDrafts:{},attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
+  settings:{},books:{},roster:{},securityQuestions:{},userEditDrafts:{},expandedUserId:'',attendees:{},ballots:{},presence:{},history:{},pendingResults:null,
   memberId:sessionStorage.getItem('member_lobby_id') || sessionStorage.getItem('bookclub_member_id') || '',lobbyMemberId:sessionStorage.getItem('member_lobby_id') || '',draft:[],initialDraftLoaded:false,draftDirty:false,presenceAttemptKey:'',adminTab:'overview',
   subscriptions:[],resultInProgress:false,drawInProgress:false,lockInProgress:false,clearingBallotId:'',drawTicker:null,loaded:{},view:'vote'
 };
@@ -185,6 +185,8 @@ function handleClick(event) {
   else if (action === 'draw-wildcard') playWildcardDraw();
   else if (action === 'start-next') startNextSession();
   else if (action === 'remove-member') removeMember(memberId);
+  else if (action === 'toggle-user') toggleUser(memberId);
+  else if (action === 'clear-member-security') clearMemberSecurity(memberId);
   else if (action === 'add-attendee') toggleAttendance(memberId,true);
   else if (action === 'remove-attendee') toggleAttendance(memberId,false);
   else if (action === 'add-book-to-slate') setBookActive(bookId,true);
@@ -201,7 +203,8 @@ function handleChange(event) {
   else if (event.target.matches('[data-action="toggle-history"]')) toggleHistoryAccess();
   else if (event.target.matches('[data-action="toggle-member-deletion"]')) toggleMemberDeletion();
   else if (event.target.matches('[data-action="toggle-member-security"]')) toggleMemberSecurity();
-  else if (event.target.matches('[data-member-security-input]')) updateMemberSecurityDraft(event.target);
+  else if (event.target.matches('[data-action="toggle-add-member-security"]')) updateAddMemberSecurityFields();
+  else if (event.target.matches('[data-user-edit-input]')) {updateUserEditDraft(event.target);if (event.target.type === 'checkbox') render();}
   else if (event.target.matches('[data-action="toggle-book-deletion"]')) toggleBookDeletion();
   else if (event.target.matches('[data-action="toggle-full-ballot"]')) toggleFullBallotRequirement();
   else if (event.target.matches('[data-action="toggle-vote-counts"]')) toggleMemberVoteCounts();
@@ -212,33 +215,75 @@ function handleSubmit(event) {
   if (event.target.id === 'member-form') {event.preventDefault();addMember();}
   else if (event.target.id === 'book-form') {event.preventDefault();addBook();}
   else if (event.target.id === 'title-form') {event.preventDefault();saveAppTitle();}
-  else if (event.target.matches('[data-member-security-form]')) {event.preventDefault();saveMemberSecurity(event.target);}
+  else if (event.target.matches('[data-user-edit-form]')) {event.preventDefault();saveUserEdit(event.target);}
 }
 
 function handleInput(event) {
-  if (event.target.matches('input[data-member-security-input]')) updateMemberSecurityDraft(event.target);
+  if (event.target.matches('[data-user-edit-input]')) updateUserEditDraft(event.target);
 }
 
-function updateMemberSecurityDraft(input) {
+function updateUserEditDraft(input) {
   const id = input.dataset.memberId;
   if (!id) return;
-  const draft = state.memberSecurityDrafts[id] || {questionId:state.securityQuestions[id]?.questionId || '',answer:''};
-  if (input.name === 'questionId') draft.questionId = input.value;
+  const draft = state.userEditDrafts[id] || {name:memberName(state.roster,id),updateSecurity:false,questionId:'',answer:''};
+  if (input.name === 'memberName') draft.name = input.value;
+  else if (input.name === 'updateSecurity') draft.updateSecurity = input.checked;
+  else if (input.name === 'questionId') draft.questionId = input.value;
   else if (input.name === 'answer') draft.answer = input.value;
-  state.memberSecurityDrafts[id] = draft;
+  state.userEditDrafts[id] = draft;
 }
 
-async function saveMemberSecurity(form) {
+function updateAddMemberSecurityFields() {
+  const checkbox = document.querySelector('#member-add-security-toggle');
+  const fields = document.querySelector('#member-add-security-fields');
+  const question = document.querySelector('#member-add-security-question');
+  const answer = document.querySelector('#member-add-security-answer');
+  const securityForced = state.settings.requireMemberSecurityQuestion === true;
+  if (securityForced) checkbox.checked = true;
+  checkbox.disabled = securityForced;
+  const required = checkbox.checked || securityForced;
+  fields.hidden = !required;
+  question.required = required;
+  answer.required = required;
+}
+
+function toggleUser(id) {
+  if (!state.roster[id]) return;
+  state.expandedUserId = state.expandedUserId === id ? '' : id;
+  if (state.expandedUserId && !state.userEditDrafts[state.expandedUserId]) state.userEditDrafts[state.expandedUserId] = {name:memberName(state.roster,state.expandedUserId),updateSecurity:false,questionId:'',answer:''};
+  render();
+}
+
+async function saveUserEdit(form) {
   const id = form.dataset.memberId;
-  const questionId = form.elements.questionId.value;
-  const answer = form.elements.answer.value;
-  if (!isAdmin || !state.roster[id] || !questionId || !answer.trim()) return;
+  const name = form.elements.memberName.value.trim();
+  const existing = state.roster[id];
+  if (!isAdmin || !existing || !name) return;
+  if (Object.entries(state.roster).some(([otherId,member]) => otherId !== id && memberName(state.roster,otherId).trim().toLowerCase() === name.toLowerCase())) {showFeedback(t('memberNameAlreadyExists'));return;}
+  const member = typeof existing === 'string' ? {name,createdAt:Date.now()} : {...existing,name};
   try {
-    const salt = createMemberAnswerSalt();
-    const answerHash = await hashMemberAnswer(answer,salt);
-    await service.setMemberSecurity(id,questionId,salt,answerHash);
-    delete state.memberSecurityDrafts[id];
-    showFeedback(t('memberSecuritySaved').replace('{name}',memberName(state.roster,id)));
+    let security = null;
+    if (form.elements.updateSecurity.checked) {
+      const questionId = form.elements.questionId.value;
+      const answer = form.elements.answer.value;
+      if (!questionId || !answer.trim()) {showFeedback(t('memberSecurityAnswerRequired'));return;}
+      const salt = createMemberAnswerSalt();
+      security = {questionId,salt,answerHash:await hashMemberAnswer(answer,salt)};
+    }
+    await service.updateMember(id,member,security);
+    delete state.userEditDrafts[id];
+    state.expandedUserId = '';
+    showFeedback(t('memberUpdated').replace('{name}',name));
+    render();
+  } catch (error) {showError(error);}
+}
+
+async function clearMemberSecurity(id) {
+  if (!isAdmin || !state.roster[id] || !state.loaded.securityQuestions || !state.securityQuestions[id] || !window.confirm(t('memberSecurityClearConfirm').replace('{name}',memberName(state.roster,id)))) return;
+  try {
+    await service.clearMemberSecurity(id);
+    delete state.userEditDrafts[id];
+    showFeedback(t('memberSecurityCleared').replace('{name}',memberName(state.roster,id)));
     render();
   } catch (error) {showError(error);}
 }
@@ -303,16 +348,36 @@ async function castVote() {
 }
 
 async function addMember() {
+  const form = document.querySelector('#member-form');
   const input = document.querySelector('#member-name'), value = input.value.trim();
+  if (!state.loaded.settings || !state.loaded.roster || !state.loaded.securityQuestions) {showFeedback(t('memberDataLoading'));return;}
   if (!value) return;
-  if (Object.values(state.roster).some(member => (typeof member === 'string' ? member : member?.name || '').toLowerCase() === value.toLowerCase())) {showFeedback(value);return;}
-  try {await service.addMember({name:value,createdAt:Date.now()});input.value = '';showFeedback(t('savedLabel'));}
+  if (Object.values(state.roster).some(member => memberNameFromValue(member).trim().toLowerCase() === value.toLowerCase())) {showFeedback(t('memberNameAlreadyExists'));return;}
+  const wantsSecurity = document.querySelector('#member-add-security-toggle').checked || state.settings.requireMemberSecurityQuestion === true;
+  const questionId = document.querySelector('#member-add-security-question').value;
+  const answer = document.querySelector('#member-add-security-answer').value;
+  if (wantsSecurity && (!questionId || !answer.trim())) {showFeedback(t('memberSecurityAnswerRequired'));return;}
+  try {
+    let security = null;
+    if (wantsSecurity) {
+      const salt = createMemberAnswerSalt();
+      security = {questionId,salt,answerHash:await hashMemberAnswer(answer,salt)};
+    }
+    await service.addMember({name:value,createdAt:Date.now()},security);
+    form.reset();
+    updateAddMemberSecurityFields();
+    showFeedback(t('memberAdded').replace('{name}',value));
+  }
   catch (error) {showError(error);}
+}
+
+function memberNameFromValue(member) {
+  return typeof member === 'string' ? member : member?.name || '';
 }
 
 async function removeMember(id) {
   if (state.settings.memberDeletionEnabled !== true || !id || !window.confirm(t('removeMemberConfirm'))) return;
-  try {await service.removeMember(id);}
+  try {await service.removeMember(id);delete state.userEditDrafts[id];if (state.expandedUserId === id) state.expandedUserId = '';}
   catch (error) {showError(error);}
 }
 
