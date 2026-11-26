@@ -1,6 +1,6 @@
 import { initializeDatabase } from './config.js';
 import { guardAdminPage } from '../shared/admin-auth.js';
-import { createDebateService } from './session-service.js';
+import { createDebateService, joinLimit, parseJoinLimit } from './session-service.js';
 import { canEndRound, canOpenReflection, canStartRound, isRoundActive } from './round-policy.js';
 import { formatTime, parseTurnDurationMinutes, remainingTimeMs, turnDurationMs } from './timer-policy.js';
 import { createRulesMarkup, escapeHtml, getLanguage, translate } from './i18n.js';
@@ -9,12 +9,15 @@ import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, createW
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') || 'join';
 const sessionId = params.get('session') || '';
+const admissionKey = `debate_admission_${sessionId}`;
+const admissionId = mode === 'join' ? sessionStorage.getItem(admissionKey) || crypto.randomUUID() : '';
+if (mode === 'join') sessionStorage.setItem(admissionKey, admissionId);
 const canHost = mode === 'host' && params.get('admin') === '1';
 const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,endedSession:null,endedSessionId:'',history:{},editingSettings:false,editingInternal:false,editingTimer:false,activeTab:'control',hostReady:false,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||sessionStorage.getItem('member_lobby_id')||'',joinId:'',joinReady:false,leaving:false,loggedOut:false,presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
+const state = {roster:{},session:null,sessionRef:null,endedSession:null,endedSessionId:'',history:{},editingSettings:false,editingInternal:false,editingTimer:false,editingJoinLimit:false,activeTab:'control',startingRound:0,hostReady:false,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||sessionStorage.getItem('member_lobby_id')||'',joinId:'',joinReady:false,leaving:false,loggedOut:false,presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
 const t = key => translate(language,key);
 
 function mountView() {
@@ -58,6 +61,7 @@ function watchSession(id) {
     if (mode === 'join' && state.joinReady && state.joinId && !state.leaving && !value.participants?.[state.joinId]) clearParticipantIdentity(state.joinId);
     state.session = value;
     state.sessionRef = ref;
+    if (state.startingRound && !canStartRound(value, state.startingRound)) state.startingRound = 0;
     render();
     resumeParticipantIfKnown();
   },()=>showError());
@@ -93,6 +97,7 @@ function clearParticipantIdentity(id) {
   state.stopPresence = null;
   if (sessionStorage.getItem('member_lobby_id') === id) sessionStorage.removeItem('member_lobby_id');
   sessionStorage.removeItem(`debate_member_${state.sessionRef?.key || sessionId}`);
+  sessionStorage.removeItem(admissionKey);
   state.memberId = '';
   state.joinId = '';
   state.joinReady = false;
@@ -107,8 +112,16 @@ async function joinParticipant(id) {
   state.memberId = id;
   state.joinId = id;
   sessionStorage.setItem(`debate_member_${state.sessionRef.key}`,id);
-  try { state.stopPresence = await service.joinSession(state.sessionRef,id,memberName(state.roster[id]),state.presenceId,()=>showError()); state.joinReady = true; render(); }
-  catch { state.joinId=''; state.joinReady = false; showError(); }
+  try { state.stopPresence = await service.joinSession(state.sessionRef,id,memberName(state.roster[id]),state.presenceId,()=>showError(),joinLimit(state.session),admissionId); state.joinReady = true; render(); }
+  catch (error) {
+    state.joinId=''; state.joinReady = false;
+    if (error.code === 'join-limit-reached') {
+      if (sessionStorage.getItem('member_lobby_id') === id) sessionStorage.removeItem('member_lobby_id');
+      sessionStorage.removeItem(`debate_member_${state.sessionRef.key}`);
+      state.memberId = '';
+      showError(t('joinLimitBlocked'));
+    } else showError();
+  }
 }
 
 async function handleJoin(event) {
@@ -193,6 +206,12 @@ async function handleSaveTimer(event) {
   await savePendingTimer(true);
 }
 
+async function handleSaveJoinLimit(event) {
+  event.preventDefault();
+  if (!canHost || !state.sessionRef || state.session?.status === 'ended') return;
+  await savePendingJoinLimit(true);
+}
+
 async function savePendingSettings(force = false) {
   if (!force && !state.editingSettings) return true;
   const settings = collectContent('edit');
@@ -233,8 +252,27 @@ async function savePendingTimer(force = false) {
   return saved;
 }
 
+async function savePendingJoinLimit(force = false) {
+  if (!force && !state.editingJoinLimit) return true;
+  const limit = parseJoinLimit(app.querySelector('#join-limit').value);
+  const status = app.querySelector('#join-limit-status');
+  if (limit === null) {status.textContent = t('invalidJoinLimit'); return false;}
+  const saved = await saveSession({'settings/maxJoinsPerMember': limit});
+  if (saved) {
+    state.editingJoinLimit = false;
+    status.textContent = t('joinLimitSaved');
+  } else status.textContent = t('error');
+  return saved;
+}
+
 async function savePendingChanges() {
-  return await savePendingSettings() && await savePendingInternal() && await savePendingTimer();
+  return await savePendingSettings() && await savePendingInternal() && await savePendingTimer() && await savePendingJoinLimit();
+}
+
+async function unblockMember(id) {
+  if (!canHost || !state.sessionRef || !state.roster[id] || !state.session?.joinAccess?.[id]) return;
+  try { await service.resetJoinLimit(state.sessionRef, id); app.querySelector('#join-limit-status').textContent = t('memberUnblocked'); }
+  catch { app.querySelector('#join-limit-status').textContent = t('error'); }
 }
 
 async function saveSession(update) {
@@ -243,10 +281,16 @@ async function saveSession(update) {
   catch { showError(); return false; }
 }
 async function startRound(number) {
-  if (!canHost || !state.sessionRef || !canStartRound(state.session, number)) return;
-  if (!await savePendingChanges()) return;
-  if (!canStartRound(state.session, number)) return;
-  await saveSession({round:String(number),phase:'active',status:'live',timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(state.session),running:false,paused:false}});
+  if (!canHost || !state.sessionRef || state.startingRound || !canStartRound(state.session, number)) return;
+  state.startingRound = number;
+  app.querySelector(`#start-round${number}`).disabled = true;
+  let saved = false;
+  try {
+    if (!await savePendingChanges() || !canStartRound(state.session, number)) return;
+    saved = await saveSession({round:String(number),phase:'active',status:'live',timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(state.session),running:false,paused:false}});
+  } finally {
+    if (!saved) { state.startingRound = 0; render(); }
+  }
 }
 async function endRound(number) {
   if (!canHost || !state.sessionRef || !canEndRound(state.session, number)) return;
@@ -368,6 +412,7 @@ app.addEventListener('submit',event=>{
   if(event.target.id==='session-settings-form')void handleSaveSettings(event);
   if(event.target.id==='session-internal-form')void handleSaveInternal(event);
   if(event.target.id==='timer-settings-form')void handleSaveTimer(event);
+  if(event.target.id==='join-limit-form')void handleSaveJoinLimit(event);
   if(event.target.id==='join-session-form')void handleJoin(event);
 });
 app.addEventListener('input',event=>{if (event.target.closest('#session-settings-form')) {state.editingSettings = true; app.querySelector('#settings-status').textContent = '';}});
@@ -375,6 +420,7 @@ app.addEventListener('change',event=>{if (event.target.closest('#session-setting
 app.addEventListener('input',event=>{if (event.target.closest('#session-internal-form')) {state.editingInternal = true; app.querySelector('#internal-status').textContent = '';}});
 app.addEventListener('change',event=>{if (event.target.closest('#session-internal-form')) {state.editingInternal = true; app.querySelector('#internal-status').textContent = '';}});
 app.addEventListener('input',event=>{if (event.target.closest('#timer-settings-form')) {state.editingTimer = true; app.querySelector('#timer-settings-status').textContent = '';}});
+app.addEventListener('input',event=>{if (event.target.closest('#join-limit-form')) {state.editingJoinLimit = true; app.querySelector('#join-limit-status').textContent = '';}});
 app.addEventListener('click',event=>{
   const side=event.target.closest('[data-side]');
   if(side){void chooseSide(side.dataset.side);return;}
@@ -394,6 +440,7 @@ app.addEventListener('click',event=>{
   else if(action==='finish-turn')void finishTurn(speakerId);
   else if(action==='copy-link')void copyJoinLink();
   else if(action==='leave-workshop')void leaveParticipant();
+  else if(action==='unblock-member')void unblockMember(control.dataset.memberId);
 });
 document.querySelector('#language').addEventListener('change',event=>{localStorage.setItem('debate_language',event.target.value);location.reload();});
 document.querySelector('#rules-button').addEventListener('click',()=>{

@@ -1,5 +1,12 @@
 import { ROUND_DURATION_MS } from './config.js';
 
+export const DEFAULT_JOIN_LIMIT = 3;
+export function parseJoinLimit(value) {
+  const limit = Number(value);
+  return Number.isInteger(limit) && limit >= 1 && limit <= 10 ? limit : null;
+}
+export function joinLimit(session) { return parseJoinLimit(session?.settings?.maxJoinsPerMember) || DEFAULT_JOIN_LIMIT; }
+
 export function createDebateService(database) {
   return {
     observeRoster(onValue, onError) {
@@ -41,7 +48,8 @@ export function createDebateService(database) {
         status: 'ready',
         round: 'setup',
         ...settings,
-        settings: {turnDurationMs: ROUND_DURATION_MS, ...(settings.settings || {})},
+        settings: {turnDurationMs: ROUND_DURATION_MS, maxJoinsPerMember: DEFAULT_JOIN_LIMIT, ...(settings.settings || {})},
+        joinAccess: {},
         participants: {},
         choices: {'1': {}, '2': {}},
         turns: {'1': {}, '2': {}},
@@ -57,7 +65,19 @@ export function createDebateService(database) {
         throw error;
       }
     },
-    async joinSession(sessionRef, memberId, memberName, clientId, onError) {
+    async joinSession(sessionRef, memberId, memberName, clientId, onError, limit = DEFAULT_JOIN_LIMIT, admissionId = clientId) {
+      const accessRef = sessionRef.child(`joinAccess/${memberId}`);
+      const allowed = await accessRef.transaction(current => {
+        const count = Number(current?.count) || 0;
+        if (current?.admissions?.[admissionId]) return current;
+        if (count >= limit) return undefined;
+        return {count: count + 1, admissions: {...current?.admissions, [admissionId]: true}, lastJoinedAt: Date.now()};
+      });
+      if (!allowed.committed) {
+        const error = new Error('Workshop join limit reached');
+        error.code = 'join-limit-reached';
+        throw error;
+      }
       const participantRef = sessionRef.child(`participants/${memberId}`);
       await participantRef.transaction(current => ({name: memberName, joinedAt: current?.joinedAt || Date.now()}));
       const presenceRef = sessionRef.child(`presence/${memberId}/${clientId}`);
@@ -81,6 +101,9 @@ export function createDebateService(database) {
         [`turns/1/${memberId}`]: null,
         [`turns/2/${memberId}`]: null
       });
+    },
+    async resetJoinLimit(sessionRef, memberId) {
+      return sessionRef.child(`joinAccess/${memberId}`).transaction(() => ({count: 0}));
     },
     async chooseSide(sessionRef, round, memberId, side) {
       const choiceRef = sessionRef.child(`choices/${round}/${memberId}`);

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDebateService } from '../assets/js/debate/session-service.js';
+import { createDebateService, joinLimit, parseJoinLimit } from '../assets/js/debate/session-service.js';
 import { canEndRound, canOpenReflection, canStartRound, isRoundActive } from '../assets/js/debate/round-policy.js';
 import { formatTime, parseTurnDurationMinutes, remainingTimeMs, turnDurationMs } from '../assets/js/debate/timer-policy.js';
-import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, createWorkshopMetaMarkup, renderDisplay, renderHostHistory, renderParticipant, renderWorkshopMeta } from '../assets/js/debate/views.js';
+import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, createWorkshopMetaMarkup, renderDisplay, renderHostHistory, renderJoinLimitWarning, renderParticipant, renderWorkshopMeta } from '../assets/js/debate/views.js';
 import { translate } from '../assets/js/debate/i18n.js';
 
 function createDatabase() {
@@ -47,6 +47,7 @@ test('one unfinished debate resumes and ending preserves its archive record', as
   assert.equal(await service.readCurrentSessionId(), id);
   assert.equal((await service.readSession(id)).notes, 'Minutes');
   assert.equal((await service.readSession(id)).settings.turnDurationMs, 180000);
+  assert.equal((await service.readSession(id)).settings.maxJoinsPerMember, 3);
   await service.updateSession(database.ref(`debate_sessions/${id}`), {'settings/turnDurationMs': 600000});
   assert.equal((await service.readSession(id)).settings.turnDurationMs, 600000);
   assert.equal(await service.createSession(settings), id);
@@ -83,12 +84,14 @@ test('round progression requires an explicit end action', () => {
   const session = {status: 'ready', round: 'setup'};
   assert.equal(canStartRound(session, 1), true);
   session.status = 'live'; session.round = '1'; session.phase = 'active';
+  assert.equal(canStartRound(session, 1), false);
   assert.equal(canStartRound(session, 2), false);
   assert.equal(canEndRound(session, 1), true);
   session.phase = 'ended';
   assert.equal(isRoundActive(session, 1), false);
   assert.equal(canStartRound(session, 2), true);
   session.round = '2'; session.phase = 'active';
+  assert.equal(canStartRound(session, 2), false);
   assert.equal(canOpenReflection(session), false);
   session.phase = 'ended';
   assert.equal(canOpenReflection(session), true);
@@ -131,13 +134,63 @@ test('leaving a workshop removes only that member and their round results', asyn
   assert.equal(session.turns['2'].m1, undefined);
 });
 
+test('join limit counts re-entry after Leave and admin can unblock a name', async () => {
+  const database = createDatabase();
+  const service = createDebateService(database);
+  const id = await service.createSession({statement1: 'First', statement2: 'Second'});
+  const ref = database.ref(`debate_sessions/${id}`);
+  assert.equal(joinLimit(await service.readSession(id)), 3);
+  for (const value of ['0', '11', '2.5', '']) assert.equal(parseJoinLimit(value), null);
+  for (let entry = 1; entry <= 3; entry++) {
+    await service.joinSession(ref, 'm1', 'Ada', `tab-${entry}`, () => {}, 3, `admission-${entry}`);
+    assert.equal((await service.readSession(id)).joinAccess.m1.count, entry);
+    if (entry === 1) {
+      await service.joinSession(ref, 'm1', 'Ada', 'refreshed-tab', () => {}, 3, 'admission-1');
+      assert.equal((await service.readSession(id)).joinAccess.m1.count, 1);
+    }
+    await service.leaveSession(ref, 'm1');
+  }
+  await assert.rejects(service.joinSession(ref, 'm1', 'Ada', 'blocked-tab', () => {}), {code: 'join-limit-reached'});
+  await service.joinSession(ref, 'm2', 'Ben', 'other-member', () => {});
+  assert.equal((await service.readSession(id)).joinAccess.m2.count, 1);
+  await service.updateSession(ref, {'settings/maxJoinsPerMember': 2});
+  assert.equal(joinLimit(await service.readSession(id)), 2);
+  await service.leaveSession(ref, 'm2');
+  await service.joinSession(ref, 'm2', 'Ben', 'second-entry', () => {}, 2);
+  await service.leaveSession(ref, 'm2');
+  await assert.rejects(service.joinSession(ref, 'm2', 'Ben', 'third-entry', () => {}, 2), {code: 'join-limit-reached'});
+  await service.joinSession(ref, 'm3', 'Cara', 'first-tab', () => {}, 2);
+  await service.joinSession(ref, 'm3', 'Cara', 'second-tab', () => {}, 2);
+  assert.equal((await service.readSession(id)).joinAccess.m3.count, 2);
+  await assert.rejects(service.joinSession(ref, 'm3', 'Cara', 'third-tab', () => {}, 2), {code: 'join-limit-reached'});
+  await service.resetJoinLimit(ref, 'm1');
+  await service.joinSession(ref, 'm1', 'Ada', 'unblocked-tab', () => {}, 2);
+  assert.equal((await service.readSession(id)).joinAccess.m1.count, 1);
+});
+
+test('admin Settings warns about names at the join limit', () => {
+  const nodes = new Map();
+  const root = {querySelector: selector => {
+    if (!nodes.has(selector)) nodes.set(selector, {hidden: true, innerHTML: ''});
+    return nodes.get(selector);
+  }};
+  const session = {settings: {maxJoinsPerMember: 3}, joinAccess: {m1: {count: 3}, m2: {count: 2}}};
+  renderJoinLimitWarning(root, session, {m1: {name: '<Ada>'}, m2: {name: 'Ben'}}, key => translate('en', key));
+  assert.equal(root.querySelector('#join-limit-warning').hidden, false);
+  assert.match(root.querySelector('#join-limit-list').innerHTML, /&lt;Ada&gt; · 3\/3/);
+  assert.doesNotMatch(root.querySelector('#join-limit-list').innerHTML, /Ben/);
+  session.joinAccess.m1.count = 0;
+  renderJoinLimitWarning(root, session, {}, key => translate('en', key));
+  assert.equal(root.querySelector('#join-limit-warning').hidden, true);
+});
+
 test('host markup separates Control, Settings, and History', () => {
   const markup = createHostMarkup(key => translate('en', key));
-  for (const id of ['setup-host', 'setup-secretary', 'setup-reflection-1', 'edit-notes', 'edit-statement-one', 'edit-reflection-3', 'host-monitor', 'host-internal', 'debate-settings-tab', 'turn-duration-minutes', 'debate-history-tab']) {
+  for (const id of ['setup-host', 'setup-secretary', 'setup-reflection-1', 'edit-notes', 'edit-statement-one', 'edit-reflection-3', 'host-monitor', 'host-internal', 'debate-settings-tab', 'turn-duration-minutes', 'host-join-settings', 'join-limit', 'join-limit-warning', 'debate-history-tab']) {
     assert.match(markup, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(markup, /id="setup-notes"/);
-  for (const round of [1, 2]) assert.match(markup, new RegExp(`<div class="ml-auto grid grid-cols-2 gap-2"><button id="start-round${round}"[^>]*min-w-32[^>]*>.*?</button><button id="end-round${round}"`));
+  for (const round of [1, 2]) assert.match(markup, new RegExp(`<div class="ml-auto grid grid-cols-2 gap-2"><button id="start-round${round}"[^>]*min-w-32[^>]*disabled:opacity-40[^>]*>.*?</button><button id="end-round${round}"`));
   assert.ok(markup.indexOf('id="host-panel"') < markup.indexOf('id="host-monitor"'));
   assert.ok(markup.indexOf('id="host-monitor"') < markup.indexOf('id="round-controls"'));
   assert.ok(markup.indexOf('id="session-settings-form"') < markup.indexOf('id="host-internal"'));
@@ -154,7 +207,7 @@ test('host markup separates Control, Settings, and History', () => {
   assert.equal(ids.length, new Set(ids).size);
   assert.doesNotMatch(markup.split('id="session-settings-form"')[1].split('</form>')[0], /id="edit-notes"/);
   const list = {innerHTML: ''};
-  renderHostHistory({querySelector: () => list}, {'session-123456': {status: 'ended', endedAt: Date.now(), statement1: '<script>alert(1)</script>', statement2: 'Second', settings: {turnDurationMs: 420000}, participants: {m1: {name: 'Ada'}}, choices: {'1': {m1: {side: 'true'}}}, turns: {'1': {m1: true}}}}, key => translate('en', key));
+  renderHostHistory({querySelector: () => list}, {'session-123456': {status: 'ended', endedAt: Date.now(), statement1: '<script>alert(1)</script>', statement2: 'Second', settings: {turnDurationMs: 420000}, participants: {m1: {name: 'Ada'}, m2: {name: 'Ben'}}, choices: {'1': {m1: {side: 'true'}}, '2': {m1: {side: 'false'}}}, turns: {'2': {m1: true}}}}, key => translate('en', key));
   assert.match(list.innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(list.innerHTML, /<script>/);
   assert.match(list.innerHTML, /7 minutes/);
@@ -163,7 +216,9 @@ test('host markup separates Control, Settings, and History', () => {
   assert.match(list.innerHTML, /23456/);
   assert.doesNotMatch(list.innerHTML, /session-123456/);
   assert.match(list.innerHTML, /Ada/);
-  assert.match(list.innerHTML, /TRUE/);
+  assert.match(list.innerHTML, />10<\/td><td[^>]*>xF<\/td>/);
+  assert.match(list.innerHTML, />––<\/td><td[^>]*>xx<\/td>/);
+  assert.doesNotMatch(list.innerHTML, /rowspan="2"/);
 });
 
 test('workshop metadata shows ID, time, participants, and open or closed status', () => {
