@@ -41,6 +41,7 @@ export function createDebateService(database) {
         status: 'ready',
         round: 'setup',
         ...settings,
+        settings: {turnDurationMs: ROUND_DURATION_MS, ...(settings.settings || {})},
         participants: {},
         choices: {'1': {}, '2': {}},
         turns: {'1': {}, '2': {}},
@@ -56,10 +57,20 @@ export function createDebateService(database) {
         throw error;
       }
     },
-    async joinSession(sessionRef, memberId, memberName) {
+    async joinSession(sessionRef, memberId, memberName, clientId, onError) {
       const participantRef = sessionRef.child(`participants/${memberId}`);
-      await participantRef.update({name: memberName, online: true, joinedAt: Date.now()});
-      await participantRef.child('online').onDisconnect().set(false);
+      await participantRef.transaction(current => ({name: memberName, joinedAt: current?.joinedAt || Date.now()}));
+      const presenceRef = sessionRef.child(`presence/${memberId}/${clientId}`);
+      const connectionRef = database.ref('.info/connected');
+      const listener = snapshot => {
+        if (snapshot.val() !== true) return;
+        presenceRef.onDisconnect().remove().then(() => presenceRef.set({joinedAt: Date.now()})).catch(onError);
+      };
+      connectionRef.on('value', listener, onError);
+      return () => {
+        connectionRef.off('value', listener);
+        presenceRef.remove().catch(onError);
+      };
     },
     async chooseSide(sessionRef, round, memberId, side) {
       const choiceRef = sessionRef.child(`choices/${round}/${memberId}`);
