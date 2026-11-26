@@ -2,7 +2,7 @@ import { ROUND_DURATION_MS, initializeDatabase } from './config.js';
 import { guardAdminPage } from '../shared/admin-auth.js';
 import { createDebateService } from './session-service.js';
 import { createRulesMarkup, escapeHtml, getLanguage, translate } from './i18n.js';
-import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, renderDisplay, renderHost, renderParticipant, renderRulesDialog } from './views.js';
+import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, renderDisplay, renderHost, renderHostHistory, renderHostRoster, renderParticipant, renderRulesDialog } from './views.js';
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') || 'join';
@@ -12,7 +12,7 @@ const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',stopSession:null};
+const state = {roster:{},session:null,sessionRef:null,history:{},editingSettings:false,hostReady:false,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',stopSession:null,stopHistory:null};
 const t = key => translate(language,key);
 
 function mountView() {
@@ -22,7 +22,11 @@ function mountView() {
   document.title = t('title');
   document.querySelectorAll('[data-i18n]').forEach(node => node.textContent = t(node.dataset.i18n));
   document.querySelector('#rules-button').setAttribute('aria-label',t('rules'));
-  if (canHost) app.innerHTML = createHostMarkup(t);
+  if (canHost) {
+    app.innerHTML = createHostMarkup(t);
+    app.querySelector('#create-session-form button').disabled = true;
+    for (const prefix of ['setup', 'edit']) for (const index of [1, 2, 3]) app.querySelector(`#${prefix}-reflection-${index}`).value = t(`reflection${index}`);
+  }
   else if (mode === 'display') app.innerHTML = createDisplayMarkup(t);
   else if (mode === 'join') app.innerHTML = createParticipantMarkup(t);
   else app.innerHTML = `<p class="rounded-xl border border-[#E2E0D8] bg-white p-5">${t('noSession')}</p>`;
@@ -30,7 +34,7 @@ function mountView() {
 }
 
 function showError(message=t('error')) {
-  const target = mode === 'host' ? (document.querySelector('#host-live-error')||document.querySelector('#host-error')) : mode === 'display' ? document.querySelector('#display-status') : document.querySelector('#join-error');
+  const target = mode === 'host' ? document.querySelector(state.session ? '#host-live-error' : '#host-error') : mode === 'display' ? document.querySelector('#display-status') : document.querySelector('#join-error');
   if (target) target.textContent = message;
 }
 
@@ -41,6 +45,7 @@ function watchSession(id) {
     state.session = value;
     state.sessionRef = ref;
     render();
+    if (canHost && value.status === 'ended' && state.hostReady) { void resumeHostSession(); return; }
     resumeParticipantIfKnown();
   },()=>showError());
 }
@@ -52,6 +57,7 @@ function render() {
 }
 
 function renderRosterOptions() {
+  if (canHost) { renderHostRoster(app,state.roster); if (state.session && !state.editingSettings) renderHost(app,state,t,makeQr); return; }
   const input = app.querySelector('#member-name');
   const list = app.querySelector('#member-roster-options');
   if (!input || !list) return;
@@ -85,15 +91,47 @@ async function handleJoin(event) {
 
 async function handleCreateSession(event) {
   event.preventDefault();
-  const statement1 = app.querySelector('#statement-one').value.trim();
-  const statement2 = app.querySelector('#statement-two').value.trim();
-  if (!statement1 || !statement2) return;
+  if (!state.hostReady) return;
+  const settings = collectSettings('setup');
+  if (!settings) return;
   try {
-    const id = await service.createSession(statement1,statement2);
+    app.querySelector('#create-session-form button').disabled = true;
+    const id = await service.createSession(settings);
     const url = new URL(location.href); url.search = `?mode=host&admin=1&session=${encodeURIComponent(id)}`;
     history.replaceState({},'',url.href);
     watchSession(id);
   } catch { showError(); }
+  finally { app.querySelector('#create-session-form button').disabled = false; }
+}
+
+function collectSettings(prefix) {
+  const statement1 = app.querySelector(prefix === 'setup' ? '#statement-one' : '#edit-statement-one').value.trim();
+  const statement2 = app.querySelector(prefix === 'setup' ? '#statement-two' : '#edit-statement-two').value.trim();
+  const hostId = app.querySelector(`#${prefix}-host`).value;
+  const secretaryId = app.querySelector(`#${prefix}-secretary`).value;
+  if (!statement1 || !statement2 || (hostId && !state.roster[hostId]) || (secretaryId && !state.roster[secretaryId])) { showError(t('completeSettings')); return null; }
+  if (hostId && hostId === secretaryId) { showError(t('differentRoles')); return null; }
+  const role = id => id ? {id, name:memberName(state.roster[id])} : null;
+  return {statement1, statement2, host:role(hostId), secretary:role(secretaryId), notes:app.querySelector(`#${prefix}-notes`).value.trim(), reflectionQuestions:Object.fromEntries([1, 2, 3].map(index => [index, app.querySelector(`#${prefix}-reflection-${index}`).value.trim() || t(`reflection${index}`)]))};
+}
+
+async function handleSaveSettings(event) {
+  event.preventDefault();
+  if (!canHost || !state.sessionRef || state.session?.status === 'ended') return;
+  await savePendingSettings(true);
+}
+
+async function savePendingSettings(force = false) {
+  if (!force && !state.editingSettings) return true;
+  const settings = collectSettings('edit');
+  if (!settings) return false;
+  const status = app.querySelector('#settings-status');
+  const saved = await saveSession(settings);
+  if (saved) {
+    state.editingSettings = false;
+    status.textContent = t('settingsSaved');
+  }
+  return saved;
 }
 
 async function saveSession(update) {
@@ -105,24 +143,37 @@ async function startRound(number) {
   if (!canHost || !state.sessionRef) return;
   if (number === 1 && state.session.round !== 'setup') return;
   if (number === 2 && (state.session.round !== '1' || !roundComplete('1'))) return;
-  const saved = await saveSession({round:String(number),status:'live',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
-  if (saved && number === 1) {
-    try { await service.activateSession(state.sessionRef.key); }
-    catch { showError(); }
-  }
+  if (!await savePendingSettings()) return;
+  await saveSession({round:String(number),status:'live',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
-function openReflection() {
+async function openReflection() {
   if (!canHost || !state.sessionRef || state.session.round !== '2' || !roundComplete('2')) return;
-  void saveSession({round:'reflection',status:'reflection',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  if (!await savePendingSettings()) return;
+  await saveSession({round:'reflection',status:'reflection',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
 }
 async function endWorkshop() {
   if (!canHost || !state.sessionRef || !confirm(`${t('endSession')}?`)) return;
+  if (!await savePendingSettings()) return;
   const sessionId = state.sessionRef.key;
-  const saved = await saveSession({round:'ended',status:'ended',timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
+  state.hostReady = false;
+  app.querySelector('#create-session-form button').disabled = true;
+  const saved = await saveSession({round:'ended',status:'ended',endedAt:Date.now(),timer:{speakerId:null,endsAt:null,remainingMs:ROUND_DURATION_MS,running:false,paused:false}});
   if (saved) {
-    try { await service.clearActiveSession(sessionId); }
+    try {
+      await service.clearActiveSession(sessionId);
+      state.stopSession?.();
+      state.session = null;
+      state.sessionRef = null;
+      const url = new URL(location.href); url.search = '?mode=host&admin=1';
+      history.replaceState({},'',url.href);
+      state.hostReady = true;
+      app.querySelector('#create-session-form button').disabled = false;
+      app.querySelector('#create-session-form').reset();
+      for (const index of [1, 2, 3]) app.querySelector(`#setup-reflection-${index}`).value = t(`reflection${index}`);
+      render();
+    }
     catch { showError(); }
-  }
+  } else { state.hostReady = true; app.querySelector('#create-session-form button').disabled = false; }
 }
 function roundComplete(round) {
   const participants = Object.keys(state.session?.participants || {});
@@ -189,8 +240,11 @@ async function copyJoinLink() {
 
 app.addEventListener('submit',event=>{
   if(event.target.id==='create-session-form')void handleCreateSession(event);
+  if(event.target.id==='session-settings-form')void handleSaveSettings(event);
   if(event.target.id==='join-session-form')void handleJoin(event);
 });
+app.addEventListener('input',event=>{if (event.target.closest('#session-settings-form')) {state.editingSettings = true; app.querySelector('#settings-status').textContent = '';}});
+app.addEventListener('change',event=>{if (event.target.closest('#session-settings-form')) {state.editingSettings = true; app.querySelector('#settings-status').textContent = '';}});
 app.addEventListener('click',event=>{
   const side=event.target.closest('[data-side]');
   if(side){void chooseSide(side.dataset.side);return;}
@@ -199,7 +253,7 @@ app.addEventListener('click',event=>{
   const speakerId=control?.dataset.speakerId;
   if(action==='start-round1')void startRound(1);
   else if(action==='start-round2')void startRound(2);
-  else if(action==='reflection')openReflection();
+  else if(action==='reflection')void openReflection();
   else if(action==='end-workshop')void endWorkshop();
   else if(action==='start-turn')void startTurn(speakerId);
   else if(action==='pause-turn')void pauseTurn(speakerId);
@@ -217,10 +271,43 @@ document.querySelector('#close-rules').addEventListener('click',()=>{document.qu
 document.querySelector('#rules-modal').addEventListener('click',event=>{if(event.target.id==='rules-modal')document.querySelector('#rules-modal').hidden=true;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelector('#rules-modal').hidden=true;});
 
+async function resumeHostSession() {
+  try {
+    let currentId = await service.readCurrentSessionId();
+    let current = currentId ? await service.readSession(currentId) : null;
+    if (current?.status === 'ended') {
+      await service.clearActiveSession(currentId);
+      currentId = null;
+      current = null;
+      state.stopSession?.();
+      state.session = null;
+      state.sessionRef = null;
+    }
+    if (!currentId && sessionId) {
+      const linked = await service.readSession(sessionId);
+      if (linked && linked.status !== 'ended') {
+        currentId = await service.activateSession(sessionId);
+      }
+    }
+    if (currentId && !current) current = await service.readSession(currentId);
+    if (currentId && !current) { showError(t('resumeError')); return; }
+    state.hostReady = true;
+    app.querySelector('#create-session-form button').disabled = false;
+    if (currentId) {
+      const url = new URL(location.href); url.search = `?mode=host&admin=1&session=${encodeURIComponent(currentId)}`;
+      history.replaceState({},'',url.href);
+      watchSession(currentId);
+    } else render();
+  } catch { showError(t('resumeError')); }
+}
+
 function startApp() {
   mountView();
   service.observeRoster(roster=>{state.roster=roster;renderRosterOptions();resumeParticipantIfKnown();},()=>showError());
-  if (sessionId && (mode !== 'host' || canHost)) watchSession(sessionId);
+  if (canHost) {
+    state.stopHistory = service.observeHistory(value=>{state.history=value;renderHostHistory(app,value,t);},()=>{app.querySelector('#host-history-list').textContent=t('error');});
+    void resumeHostSession();
+  } else if (sessionId) watchSession(sessionId);
   else if (mode==='display'||mode==='join') { showError(t('noSession')); if(mode==='join')app.querySelector('#join-session-form').hidden=true; }
   window.setInterval(updateTimer,1000);
 }

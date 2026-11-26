@@ -7,6 +7,9 @@ const messages = {
   }
 };
 
+Object.assign(messages.en, {hostIntro:'Set up and run the workshop from one dashboard.',hostName:'Host',secretaryName:'Secretary',chooseMember:'Choose a member',reflectionQuestion:'Reflection question',reflectionQuestions:'Reflection questions',sessionNotes:'Session notes',sessionSettings:'Session settings',settingsHint:'Saved statements and reflection questions update the projection screen.',saveSettings:'Save settings',settingsSaved:'Session settings saved.',completeSettings:'Enter both statements and choose valid roster members.',differentRoles:'Choose different members for host and secretary.',monitorPreview:'Projection preview',monitorHint:'Live view of the projection screen.',debateHistory:'Debate history',noDebateHistory:'No completed workshops yet.',resumeError:'Could not reopen the current workshop.'});
+Object.assign(messages.de, {hostIntro:'Richte den Workshop ein und steuere ihn über ein Dashboard.',hostName:'Moderation',secretaryName:'Protokoll',chooseMember:'Mitglied auswählen',reflectionQuestion:'Reflexionsfrage',reflectionQuestions:'Reflexionsfragen',sessionNotes:'Sitzungsnotizen',sessionSettings:'Sitzungseinstellungen',settingsHint:'Gespeicherte Aussagen und Reflexionsfragen erscheinen auf der Projektion.',saveSettings:'Einstellungen speichern',settingsSaved:'Sitzungseinstellungen gespeichert.',completeSettings:'Gib beide Aussagen ein und wähle gültige Mitglieder.',differentRoles:'Wähle unterschiedliche Mitglieder für Moderation und Protokoll.',monitorPreview:'Projektionsvorschau',monitorHint:'Live-Ansicht der Projektionsfläche.',debateHistory:'Debattenarchiv',noDebateHistory:'Noch keine abgeschlossenen Workshops.',resumeError:'Der aktuelle Workshop konnte nicht geöffnet werden.'});
+
 export function getLanguage() {
   return localStorage.getItem('debate_language') === 'de' ? 'de' : 'en';
 }
