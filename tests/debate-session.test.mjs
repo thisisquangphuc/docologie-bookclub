@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createDebateService } from '../assets/js/debate/session-service.js';
 import { canEndRound, canOpenReflection, canStartRound, isRoundActive } from '../assets/js/debate/round-policy.js';
 import { formatTime, parseTurnDurationMinutes, remainingTimeMs, turnDurationMs } from '../assets/js/debate/timer-policy.js';
-import { createHostMarkup, renderDisplay, renderHostHistory, renderParticipant } from '../assets/js/debate/views.js';
+import { createHostMarkup, createWorkshopMetaMarkup, renderDisplay, renderHostHistory, renderParticipant, renderWorkshopMeta } from '../assets/js/debate/views.js';
 import { translate } from '../assets/js/debate/i18n.js';
 
 function createDatabase() {
@@ -67,7 +67,7 @@ test('one unfinished debate resumes and ending preserves its archive record', as
 test('timer duration is bounded and an active turn keeps its remaining time', () => {
   assert.equal(parseTurnDurationMinutes('3'), 3);
   assert.equal(parseTurnDurationMinutes('30'), 30);
-  for (const value of ['2', '31', '3.5', '']) assert.equal(parseTurnDurationMinutes(value), null);
+  for (const value of ['2', '4', '7', '31', '3.5', '']) assert.equal(parseTurnDurationMinutes(value), null);
   assert.equal(turnDurationMs({}), 180000);
   const session = {settings: {turnDurationMs: 420000}, timer: {speakerId: null}};
   assert.equal(turnDurationMs(session), 420000);
@@ -111,9 +111,11 @@ test('presence counts separate tabs and clears only the departing tab', async ()
 
 test('host markup separates Control, Settings, and History', () => {
   const markup = createHostMarkup(key => translate('en', key));
-  for (const id of ['setup-host', 'setup-secretary', 'setup-reflection-1', 'setup-notes', 'edit-statement-one', 'edit-reflection-3', 'host-monitor', 'host-internal', 'debate-settings-tab', 'turn-duration-minutes', 'debate-history-tab']) {
+  for (const id of ['setup-host', 'setup-secretary', 'setup-reflection-1', 'edit-notes', 'edit-statement-one', 'edit-reflection-3', 'host-monitor', 'host-internal', 'debate-settings-tab', 'turn-duration-minutes', 'debate-history-tab']) {
     assert.match(markup, new RegExp(`id="${id}"`));
   }
+  assert.doesNotMatch(markup, /id="setup-notes"/);
+  for (const round of [1, 2]) assert.match(markup, new RegExp(`<div class="ml-auto grid grid-cols-2 gap-2"><button id="start-round${round}"[^>]*min-w-32[^>]*>.*?</button><button id="end-round${round}"`));
   assert.ok(markup.indexOf('id="host-panel"') < markup.indexOf('id="host-monitor"'));
   assert.ok(markup.indexOf('id="host-monitor"') < markup.indexOf('id="round-controls"'));
   assert.ok(markup.indexOf('id="session-settings-form"') < markup.indexOf('id="host-internal"'));
@@ -123,6 +125,9 @@ test('host markup separates Control, Settings, and History', () => {
   assert.match(settingsTab, /id="timer-settings-form"/);
   assert.match(settingsTab, /id="session-settings-form"/);
   assert.match(settingsTab, /id="session-internal-form"/);
+  assert.match(settingsTab, /<select id="turn-duration-minutes"/);
+  assert.match(settingsTab, /<option value="30">30 minutes<\/option>/);
+  assert.doesNotMatch(settingsTab, /<option value="35"/);
   const ids = [...markup.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
   assert.equal(ids.length, new Set(ids).size);
   assert.doesNotMatch(markup.split('id="session-settings-form"')[1].split('</form>')[0], /id="edit-notes"/);
@@ -131,6 +136,24 @@ test('host markup separates Control, Settings, and History', () => {
   assert.match(list.innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(list.innerHTML, /<script>/);
   assert.match(list.innerHTML, /7 minutes/);
+});
+
+test('workshop metadata shows ID, time, participants, and open or closed status', () => {
+  const markup = createWorkshopMetaMarkup(key => translate('en', key));
+  for (const id of ['workshop-status', 'workshop-id', 'workshop-time', 'workshop-participants']) assert.match(markup, new RegExp(`id="${id}"`));
+  const nodes = new Map();
+  const root = {querySelector: selector => {
+    if (!nodes.has(selector)) nodes.set(selector, {textContent: '', className: ''});
+    return nodes.get(selector);
+  }};
+  const session = {status: 'live', createdAt: Date.UTC(2026, 10, 26, 18), participants: {a: {}, b: {}}};
+  renderWorkshopMeta(root, session, 'session-1', key => translate('en', key), 'en');
+  assert.equal(root.querySelector('#workshop-id').textContent, 'session-1');
+  assert.equal(root.querySelector('#workshop-participants').textContent, 2);
+  assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop open');
+  session.status = 'ended';
+  renderWorkshopMeta(root, session, 'session-1', key => translate('en', key), 'en');
+  assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop closed');
 });
 
 test('member sees reflection questions and an ended debate message, without internal notes', () => {
@@ -152,6 +175,10 @@ test('member sees reflection questions and an ended debate message, without inte
   assert.equal(root.querySelector('#member-unavailable').hidden, false);
   assert.equal(root.querySelector('#member-panel').hidden, true);
   assert.equal(root.querySelector('#join-form').hidden, true);
+  state.endedSession = {statement1: 'Previous statement'};
+  renderParticipant(root, state, key => translate('en', key));
+  assert.equal(root.querySelector('#member-expired').hidden, false);
+  assert.equal(root.querySelector('#member-last-statement').textContent, 'Previous statement');
 });
 
 test('projection shows the unavailable message after the debate ends', () => {
@@ -164,4 +191,9 @@ test('projection shows the unavailable message after the debate ends', () => {
   assert.match(root.querySelector('#display-statement').textContent, /No debate is currently active/);
   assert.equal(root.querySelector('#display-counts').hidden, true);
   assert.equal(root.querySelector('#display-qr').parentElement.hidden, true);
+  renderDisplay(root, {session: null, endedSession: {statement1: 'Previous statement'}}, key => translate('en', key), [], () => {});
+  assert.equal(root.querySelector('#display-expired').hidden, false);
+  assert.equal(root.querySelector('#display-qr-expired').hidden, false);
+  assert.equal(root.querySelector('#display-qr').hidden, true);
+  assert.match(root.querySelector('#display-status').textContent, /link has expired/);
 });

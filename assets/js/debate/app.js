@@ -4,7 +4,7 @@ import { createDebateService } from './session-service.js';
 import { canEndRound, canOpenReflection, canStartRound, isRoundActive } from './round-policy.js';
 import { formatTime, parseTurnDurationMinutes, remainingTimeMs, turnDurationMs } from './timer-policy.js';
 import { createRulesMarkup, escapeHtml, getLanguage, translate } from './i18n.js';
-import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, renderDisplay, renderHost, renderHostHistory, renderHostRoster, renderParticipant, renderRulesDialog } from './views.js';
+import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, createWorkshopMetaMarkup, renderDisplay, renderHost, renderHostHistory, renderHostRoster, renderParticipant, renderRulesDialog, renderWorkshopMeta } from './views.js';
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') || 'join';
@@ -14,7 +14,7 @@ const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,history:{},editingSettings:false,editingInternal:false,editingTimer:false,activeTab:'control',hostReady:false,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
+const state = {roster:{},session:null,sessionRef:null,endedSession:null,endedSessionId:'',history:{},editingSettings:false,editingInternal:false,editingTimer:false,activeTab:'control',hostReady:false,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
 const t = key => translate(language,key);
 
 function mountView() {
@@ -25,12 +25,12 @@ function mountView() {
   document.querySelectorAll('[data-i18n]').forEach(node => node.textContent = t(node.dataset.i18n));
   document.querySelector('#rules-button').setAttribute('aria-label',t('rules'));
   if (canHost) {
-    app.innerHTML = createHostMarkup(t);
+    app.innerHTML = createWorkshopMetaMarkup(t) + createHostMarkup(t);
     app.querySelector('#create-session-form button').disabled = true;
     for (const prefix of ['setup', 'edit']) for (const index of [1, 2, 3]) app.querySelector(`#${prefix}-reflection-${index}`).value = t(`reflection${index}`);
   }
-  else if (mode === 'display') app.innerHTML = createDisplayMarkup(t);
-  else if (mode === 'join') app.innerHTML = createParticipantMarkup(t);
+  else if (mode === 'display') app.innerHTML = createWorkshopMetaMarkup(t) + createDisplayMarkup(t);
+  else if (mode === 'join') app.innerHTML = createWorkshopMetaMarkup(t) + createParticipantMarkup(t);
   else app.innerHTML = `<p class="rounded-xl border border-[#E2E0D8] bg-white p-5">${t('noSession')}</p>`;
   if (mode === 'join' && !sessionId) showError(t('noSession'));
 }
@@ -44,13 +44,13 @@ function watchSession(id) {
   state.stopSession?.();
   state.stopSession = service.observeSession(id,(value,ref)=>{
     if (!value || value.status === 'ended') {
+      state.endedSession = value?.status === 'ended' ? value : null;
+      state.endedSessionId = state.endedSession ? id : '';
       state.stopPresence?.();
       state.stopPresence = null;
       state.session = null;
       state.sessionRef = null;
-      if (mode === 'join') renderParticipant(app,state,t);
-      else if (mode === 'display') renderDisplay(app,state,t,[t('reflection1'),t('reflection2'),t('reflection3')],makeQr);
-      else render();
+      render();
       if (canHost && state.hostReady) void resumeHostSession();
       return;
     }
@@ -65,6 +65,12 @@ function render() {
   if (canHost) renderHost(app,state,t,makeQr);
   if (mode === 'display') renderDisplay(app,state,t,[t('reflection1'),t('reflection2'),t('reflection3')],makeQr);
   if (mode === 'join') renderParticipant(app,state,t);
+  if (canHost || mode === 'display' || mode === 'join') {
+    const latest = Object.entries(state.history).sort((a, b) => (b[1].endedAt || 0) - (a[1].endedAt || 0))[0];
+    const info = state.session || state.endedSession || (canHost ? latest?.[1] : null);
+    const id = state.sessionRef?.key || state.endedSessionId || (canHost ? latest?.[0] : sessionId);
+    renderWorkshopMeta(app,info,id,t,language);
+  }
   updateTimer();
 }
 
@@ -139,7 +145,7 @@ function collectInternal(prefix) {
     return null;
   }
   const role = id => id ? {id, name:memberName(state.roster[id])} : null;
-  return {host:role(hostId), secretary:role(secretaryId), notes:app.querySelector(`#${prefix}-notes`).value.trim()};
+  return {host:role(hostId), secretary:role(secretaryId), notes:prefix === 'setup' ? '' : app.querySelector('#edit-notes').value.trim()};
 }
 
 async function handleSaveSettings(event) {
@@ -233,11 +239,17 @@ async function endWorkshop() {
   if (!await savePendingChanges()) return;
   if (!state.sessionRef || state.session?.status === 'ended') return;
   const sessionId = state.sessionRef.key;
+  const endingSession = state.session;
+  const endedAt = Date.now();
   state.hostReady = false;
   app.querySelector('#create-session-form button').disabled = true;
-  const saved = await saveSession({round:'ended',status:'ended',endedAt:Date.now(),timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(state.session),running:false,paused:false}});
+  const saved = await saveSession({round:'ended',status:'ended',endedAt,timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(endingSession),running:false,paused:false}});
   if (saved) {
     try {
+      if (state.endedSessionId !== sessionId) {
+        state.endedSession = {...endingSession, round:'ended', status:'ended', endedAt};
+        state.endedSessionId = sessionId;
+      }
       await service.clearActiveSession(sessionId);
       state.stopSession?.();
       state.session = null;
@@ -370,6 +382,8 @@ async function resumeHostSession() {
     let currentId = await service.readCurrentSessionId();
     let current = currentId ? await service.readSession(currentId) : null;
     if (current?.status === 'ended') {
+      state.endedSession = current;
+      state.endedSessionId = currentId;
       await service.clearActiveSession(currentId);
       currentId = null;
       current = null;
@@ -400,7 +414,7 @@ function startApp() {
   if (canHost) render();
   service.observeRoster(roster=>{state.roster=roster;renderRosterOptions();resumeParticipantIfKnown();},()=>showError());
   if (canHost) {
-    state.stopHistory = service.observeHistory(value=>{state.history=value;renderHostHistory(app,value,t);},()=>{app.querySelector('#host-history-list').textContent=t('error');});
+    state.stopHistory = service.observeHistory(value=>{state.history=value;renderHostHistory(app,value,t);render();},()=>{app.querySelector('#host-history-list').textContent=t('error');});
     void resumeHostSession();
   } else if (sessionId) watchSession(sessionId);
   else if (mode==='display'||mode==='join') render();
