@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createDebateService } from '../assets/js/debate/session-service.js';
 import { canEndRound, canOpenReflection, canStartRound, isRoundActive } from '../assets/js/debate/round-policy.js';
 import { formatTime, parseTurnDurationMinutes, remainingTimeMs, turnDurationMs } from '../assets/js/debate/timer-policy.js';
-import { createHostMarkup, createWorkshopMetaMarkup, renderDisplay, renderHostHistory, renderParticipant, renderWorkshopMeta } from '../assets/js/debate/views.js';
+import { createDisplayMarkup, createHostMarkup, createParticipantMarkup, createWorkshopMetaMarkup, renderDisplay, renderHostHistory, renderParticipant, renderWorkshopMeta } from '../assets/js/debate/views.js';
 import { translate } from '../assets/js/debate/i18n.js';
 
 function createDatabase() {
@@ -109,6 +109,28 @@ test('presence counts separate tabs and clears only the departing tab', async ()
   stopSecond();
 });
 
+test('leaving a workshop removes only that member and their round results', async () => {
+  const database = createDatabase();
+  const service = createDebateService(database);
+  const id = await service.createSession({statement1: 'First', statement2: 'Second'});
+  const ref = database.ref(`debate_sessions/${id}`);
+  await service.joinSession(ref, 'm1', 'Ada', 'tab-1', () => {});
+  await service.joinSession(ref, 'm2', 'Ben', 'tab-2', () => {});
+  await database.ref('.info/connected').set(true);
+  await service.chooseSide(ref, '1', 'm1', 'true');
+  await service.chooseSide(ref, '2', 'm1', 'false');
+  await service.updateSession(ref, {'turns/1/m1': true, 'turns/2/m1': true});
+  await service.leaveSession(ref, 'm1');
+  const session = await service.readSession(id);
+  assert.equal(session.participants.m1, undefined);
+  assert.equal(session.participants.m2.name, 'Ben');
+  assert.equal(session.presence.m1, undefined);
+  assert.equal(session.choices['1'].m1, undefined);
+  assert.equal(session.choices['2'].m1, undefined);
+  assert.equal(session.turns['1'].m1, undefined);
+  assert.equal(session.turns['2'].m1, undefined);
+});
+
 test('host markup separates Control, Settings, and History', () => {
   const markup = createHostMarkup(key => translate('en', key));
   for (const id of ['setup-host', 'setup-secretary', 'setup-reflection-1', 'edit-notes', 'edit-statement-one', 'edit-reflection-3', 'host-monitor', 'host-internal', 'debate-settings-tab', 'turn-duration-minutes', 'debate-history-tab']) {
@@ -132,10 +154,16 @@ test('host markup separates Control, Settings, and History', () => {
   assert.equal(ids.length, new Set(ids).size);
   assert.doesNotMatch(markup.split('id="session-settings-form"')[1].split('</form>')[0], /id="edit-notes"/);
   const list = {innerHTML: ''};
-  renderHostHistory({querySelector: () => list}, {old: {status: 'ended', endedAt: Date.now(), statement1: '<script>alert(1)</script>', statement2: 'Second', settings: {turnDurationMs: 420000}}}, key => translate('en', key));
+  renderHostHistory({querySelector: () => list}, {'session-123456': {status: 'ended', endedAt: Date.now(), statement1: '<script>alert(1)</script>', statement2: 'Second', settings: {turnDurationMs: 420000}, participants: {m1: {name: 'Ada'}}, choices: {'1': {m1: {side: 'true'}}}, turns: {'1': {m1: true}}}}, key => translate('en', key));
   assert.match(list.innerHTML, /&lt;script&gt;/);
   assert.doesNotMatch(list.innerHTML, /<script>/);
   assert.match(list.innerHTML, /7 minutes/);
+  assert.equal((list.innerHTML.match(/<table /g) || []).length, 2);
+  assert.match(list.innerHTML, /text-center/);
+  assert.match(list.innerHTML, /23456/);
+  assert.doesNotMatch(list.innerHTML, /session-123456/);
+  assert.match(list.innerHTML, /Ada/);
+  assert.match(list.innerHTML, /TRUE/);
 });
 
 test('workshop metadata shows ID, time, participants, and open or closed status', () => {
@@ -147,16 +175,19 @@ test('workshop metadata shows ID, time, participants, and open or closed status'
     return nodes.get(selector);
   }};
   const session = {status: 'live', createdAt: Date.UTC(2026, 10, 26, 18), participants: {a: {}, b: {}}};
-  renderWorkshopMeta(root, session, 'session-1', key => translate('en', key), 'en');
-  assert.equal(root.querySelector('#workshop-id').textContent, 'session-1');
+  renderWorkshopMeta(root, session, 'session-123456', key => translate('en', key), 'en');
+  assert.equal(root.querySelector('#workshop-id').textContent, '23456');
   assert.equal(root.querySelector('#workshop-participants').textContent, 2);
   assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop open');
   session.status = 'ended';
-  renderWorkshopMeta(root, session, 'session-1', key => translate('en', key), 'en');
+  renderWorkshopMeta(root, session, 'session-123456', key => translate('en', key), 'en');
   assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop closed');
 });
 
 test('member sees reflection questions and an ended debate message, without internal notes', () => {
+  const markup = createParticipantMarkup(key => translate('en', key));
+  assert.match(markup, /id="member-display-name"/);
+  assert.match(markup, /data-action="leave-workshop"/);
   const nodes = new Map();
   const root = {
     querySelector: selector => {
@@ -165,11 +196,18 @@ test('member sees reflection questions and an ended debate message, without inte
     },
     querySelectorAll: () => []
   };
-  const state = {memberId: 'm1', session: {round: 'reflection', participants: {m1: {name: 'Ada'}}, reflectionQuestions: {'1': 'What changed?', '2': 'Why?', '3': 'What next?'}, notes: 'Private minutes'}};
+  const state = {memberId: 'm1', joinId: 'm1', session: {round: 'reflection', participants: {m1: {name: 'Ada'}}, reflectionQuestions: {'1': 'What changed?', '2': 'Why?', '3': 'What next?'}, notes: 'Private minutes'}};
   renderParticipant(root, state, key => translate('en', key));
+  assert.equal(root.querySelector('#member-display-name').textContent, 'Ada');
   assert.equal(root.querySelector('#member-reflection').hidden, false);
   assert.match(root.querySelector('#member-reflection').innerHTML, /What changed\?/);
   assert.doesNotMatch(root.querySelector('#member-reflection').innerHTML, /Private minutes/);
+  state.loggedOut = true;
+  renderParticipant(root, state, key => translate('en', key));
+  assert.equal(root.querySelector('#member-logged-out').hidden, false);
+  assert.equal(root.querySelector('#join-form').hidden, true);
+  assert.equal(root.querySelector('#member-panel').hidden, true);
+  state.loggedOut = false;
   state.session = null;
   renderParticipant(root, state, key => translate('en', key));
   assert.equal(root.querySelector('#member-unavailable').hidden, false);
@@ -182,6 +220,9 @@ test('member sees reflection questions and an ended debate message, without inte
 });
 
 test('projection shows the unavailable message after the debate ends', () => {
+  const markup = createDisplayMarkup(key => translate('en', key));
+  assert.ok(markup.indexOf('id="display-reflection"') < markup.indexOf('id="display-qr"'));
+  assert.match(markup, /id="display-qr" class="mx-auto flex/);
   const nodes = new Map();
   const root = {querySelector: selector => {
     if (!nodes.has(selector)) nodes.set(selector, {hidden: false, textContent: '', parentElement: {hidden: false}});

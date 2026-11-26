@@ -11,7 +11,7 @@ export function renderWorkshopMeta(root, session, sessionId, t, language) {
   const status = root.querySelector('#workshop-status');
   status.textContent = t(open ? 'workshopOpen' : 'workshopClosed');
   status.className = `rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white ${open ? 'bg-neutral-900' : 'bg-[#71363C]'}`;
-  root.querySelector('#workshop-id').textContent = sessionId || '—';
+  root.querySelector('#workshop-id').textContent = sessionId ? String(sessionId).slice(-5) : '—';
   root.querySelector('#workshop-time').textContent = session?.createdAt ? new Date(session.createdAt).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', {dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin'}) : '—';
   root.querySelector('#workshop-participants').textContent = Object.keys(session?.participants || {}).length;
 }
@@ -54,11 +54,11 @@ export function createHostMarkup(t) {
 }
 
 export function createDisplayMarkup(t) {
-  return `<section id="projection" class="flex flex-col justify-between gap-6"><div class="flex items-start justify-between gap-5"><div class="max-w-4xl"><p id="display-round" class="text-sm font-bold uppercase tracking-[.2em] text-[#71363C]"></p><h2 id="display-statement" class="serif mt-5 text-4xl leading-tight sm:text-6xl lg:text-7xl"></h2></div><aside hidden class="rounded-xl border border-[#E2E0D8] bg-white p-4 text-center sm:block"><div id="display-qr"></div><p id="display-qr-expired" hidden class="text-sm font-semibold text-[#71363C]">${t('qrExpired')}</p><p id="display-qr-hint" class="mt-2 max-w-32 text-xs text-neutral-500">${t('qrHint')}</p></aside></div>${createExpiredSummaryMarkup(t, 'display')}<div id="display-reflection" hidden class="grid gap-3 md:grid-cols-3"></div><div id="display-counts" class="grid gap-5 border-t border-neutral-300 pt-5 md:grid-cols-3"><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('true')}</p><p id="display-true" class="serif text-5xl">0</p></div><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('false')}</p><p id="display-false" class="serif text-5xl">0</p></div><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('speakerLabel')}</p><p id="display-speaker" class="serif text-2xl"></p><p id="display-timer" class="serif mt-1 text-4xl tabular-nums"></p></div></div><p id="display-status" class="text-sm text-neutral-500"></p></section>`;
+  return `<section id="projection" class="flex flex-col justify-between gap-6"><div class="flex items-start justify-between gap-5"><div class="min-w-0 max-w-4xl flex-1"><p id="display-round" class="text-sm font-bold uppercase tracking-[.2em] text-[#71363C]"></p><h2 id="display-statement" class="serif mt-5 text-4xl leading-tight sm:text-6xl lg:text-7xl"></h2><div id="display-reflection" hidden class="mt-5 grid gap-3 md:grid-cols-3"></div></div><aside hidden class="shrink-0 rounded-xl border border-[#E2E0D8] bg-white p-4 text-center sm:block"><div id="display-qr" class="mx-auto flex min-h-28 items-center justify-center"></div><p id="display-qr-expired" hidden class="text-sm font-semibold text-[#71363C]">${t('qrExpired')}</p><p id="display-qr-hint" class="mx-auto mt-2 max-w-32 text-xs text-neutral-500">${t('qrHint')}</p></aside></div>${createExpiredSummaryMarkup(t, 'display')}<div id="display-counts" class="grid gap-5 border-t border-neutral-300 pt-5 md:grid-cols-3"><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('true')}</p><p id="display-true" class="serif text-5xl">0</p></div><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('false')}</p><p id="display-false" class="serif text-5xl">0</p></div><div><p class="text-sm uppercase tracking-wider text-neutral-500">${t('speakerLabel')}</p><p id="display-speaker" class="serif text-2xl"></p><p id="display-timer" class="serif mt-1 text-4xl tabular-nums"></p></div></div><p id="display-status" class="text-sm text-neutral-500"></p></section>`;
 }
 
 export function createParticipantMarkup(t) {
-  return `<section class="mx-auto max-w-xl"><p id="member-unavailable" hidden class="rounded-xl border border-[#E2E0D8] bg-white p-5 text-center text-neutral-600">${t('noActiveDebate')}</p>${createExpiredSummaryMarkup(t, 'member')}<p id="join-error" class="mb-4 text-sm text-neutral-600" role="status"></p><div id="join-form" class="rounded-xl border border-[#E2E0D8] bg-white p-5"><h2 class="serif text-2xl">${t('join')}</h2><form id="join-session-form" class="mt-4 space-y-3"><label for="member-name" class="block text-sm font-semibold">${t('chooseName')}</label><input id="member-name" list="member-roster-options" autocomplete="off" required class="w-full rounded-lg border border-neutral-300 bg-[#F7F6F2] p-3" placeholder="${t('namePlaceholder')}"><datalist id="member-roster-options"></datalist><button class="w-full rounded-lg bg-neutral-900 px-4 py-3 font-semibold text-white">${t('joinButton')}</button></form></div><section id="member-panel" hidden class="mt-4 space-y-4"><div class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p id="member-round" class="text-xs font-bold uppercase tracking-widest text-[#71363C]"></p><h2 id="member-statement" class="serif mt-3 text-2xl leading-snug"></h2><p id="member-phase-note" class="mt-2 text-sm text-neutral-500"></p><div id="member-reflection" hidden class="mt-5 space-y-3"></div><div id="position-controls" class="mt-5"><p class="mb-3 text-sm font-semibold">${t('position')}</p><div class="grid grid-cols-2 gap-3"><button data-side="true" class="rounded-lg border border-neutral-300 bg-white px-4 py-5 text-lg font-bold">${t('true')}</button><button data-side="false" class="rounded-lg border border-neutral-300 bg-white px-4 py-5 text-lg font-bold">${t('false')}</button></div></div><p id="my-choice" class="mt-4 text-sm font-semibold"></p></div><div class="rounded-xl border border-[#E2E0D8] bg-white p-4"><p id="member-speaker" class="text-sm text-neutral-600"></p><p id="member-timer" class="serif mt-1 text-3xl tabular-nums"></p></div></section></section>`;
+  return `<section class="mx-auto max-w-xl"><p id="member-unavailable" hidden class="rounded-xl border border-[#E2E0D8] bg-white p-5 text-center text-neutral-600">${t('noActiveDebate')}</p>${createExpiredSummaryMarkup(t, 'member')}<section id="member-logged-out" hidden class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p id="member-logged-out-message" class="text-sm text-[#71363C]"></p><a id="member-new-tab" target="_blank" rel="noopener" class="mt-3 inline-block rounded-lg border border-neutral-300 px-4 py-3 text-sm font-semibold">${t('openNewTab')}</a></section><p id="join-error" class="mb-4 text-sm text-neutral-600" role="status"></p><div id="join-form" class="rounded-xl border border-[#E2E0D8] bg-white p-5"><h2 class="serif text-2xl">${t('join')}</h2><form id="join-session-form" class="mt-4 space-y-3"><label for="member-name" class="block text-sm font-semibold">${t('chooseName')}</label><input id="member-name" list="member-roster-options" autocomplete="off" required class="w-full rounded-lg border border-neutral-300 bg-[#F7F6F2] p-3" placeholder="${t('namePlaceholder')}"><datalist id="member-roster-options"></datalist><button class="w-full rounded-lg bg-neutral-900 px-4 py-3 font-semibold text-white">${t('joinButton')}</button></form></div><section id="member-panel" hidden class="mt-4 space-y-4"><div class="flex flex-wrap items-center justify-end gap-3"><p class="text-sm text-neutral-600">${t('memberNameLabel')}: <strong id="member-display-name" class="text-neutral-900"></strong></p><button type="button" data-action="leave-workshop" class="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-semibold">${t('leaveWorkshop')}</button></div><div class="rounded-xl border border-[#E2E0D8] bg-white p-5"><p id="member-round" class="text-xs font-bold uppercase tracking-widest text-[#71363C]"></p><h2 id="member-statement" class="serif mt-3 text-2xl leading-snug"></h2><p id="member-phase-note" class="mt-2 text-sm text-neutral-500"></p><div id="member-reflection" hidden class="mt-5 space-y-3"></div><div id="position-controls" class="mt-5"><p class="mb-3 text-sm font-semibold">${t('position')}</p><div class="grid grid-cols-2 gap-3"><button data-side="true" class="rounded-lg border border-neutral-300 bg-white px-4 py-5 text-lg font-bold">${t('true')}</button><button data-side="false" class="rounded-lg border border-neutral-300 bg-white px-4 py-5 text-lg font-bold">${t('false')}</button></div></div><p id="my-choice" class="mt-4 text-sm font-semibold"></p></div><div class="rounded-xl border border-[#E2E0D8] bg-white p-4"><p id="member-speaker" class="text-sm text-neutral-600"></p><p id="member-timer" class="serif mt-1 text-3xl tabular-nums"></p></div></section></section>`;
 }
 
 export function renderHost(root, state, t, makeQr) {
@@ -103,7 +103,7 @@ export function renderHost(root, state, t, makeQr) {
   root.querySelector('#display-link').href = displayUrl.href;
   const joinUrl = new URL(location.href); joinUrl.search = `?mode=join&session=${encodeURIComponent(sessionRef.key)}`;
   const joinLink = joinUrl.href;
-  root.querySelector('#join-link').href = joinLink; root.querySelector('#join-link').textContent = joinLink;
+  root.querySelector('#join-link').href = joinLink; root.querySelector('#join-link').textContent = `${t('join')} · ${String(sessionRef.key).slice(-5)}`;
   const onlineIds = new Set(Object.entries(session.presence || {}).filter(([, connections]) => Object.keys(connections || {}).length > 0).map(([id]) => id));
   root.querySelector('#participant-summary').textContent = `${participants.length} ${t('joined')} · ${onlineIds.size} ${t('onlineNow')}`;
   makeQr(root.querySelector('#host-qr'), joinLink, 150);
@@ -217,24 +217,39 @@ export function renderHostRoster(root, roster) {
 
 export function renderHostHistory(root, history, t) {
   const entries = Object.entries(history).filter(([, session]) => session?.status === 'ended').sort((a, b) => (b[1].endedAt || 0) - (a[1].endedAt || 0));
-  root.querySelector('#host-history-list').innerHTML = entries.length ? entries.map(([, session]) => {
-    const date = new Date(session.endedAt || session.createdAt || 0).toLocaleDateString();
-    const participants = Object.values(session.participants || {}).map(person => person?.name).filter(Boolean).join(', ');
-    const questions = [1, 2, 3].map(index => session.reflectionQuestions?.[index] || t(`reflection${index}`));
-    const rounds = ['1', '2'].map(round => {
-      const rows = Object.entries(session.participants || {}).map(([id, person]) => {
-        const side = session.choices?.[round]?.[id]?.side;
-        return `<li>${escapeHtml(person.name)}: ${side ? t(side) : '—'} · ${session.turns?.[round]?.[id] ? t('turnUsed') : '—'}</li>`;
-      }).join('');
-      return `<div><strong>${t(`round${round}`)}:</strong><ul class="mt-1 space-y-1 pl-3">${rows || '<li>—</li>'}</ul></div>`;
+  const date = value => value ? new Date(value).toLocaleString() : '—';
+  const field = (label, value) => `<tr class="border-b border-neutral-200 last:border-0"><th scope="row" class="w-44 align-top px-3 py-2 text-left font-semibold text-neutral-600">${escapeHtml(label)}</th><td class="whitespace-pre-wrap px-3 py-2 align-top">${escapeHtml(value || '—')}</td></tr>`;
+  root.querySelector('#host-history-list').innerHTML = entries.length ? entries.map(([id, session]) => {
+    const participants = Object.entries(session.participants || {}).sort((a, b) => String(a[1]?.name || '').localeCompare(String(b[1]?.name || '')));
+    const fields = [
+      [t('workshopId'), String(id).slice(-5)],
+      [t('workshopTime'), date(session.createdAt)],
+      [t('historyEnded'), date(session.endedAt)],
+      [t('hostName'), session.host?.name],
+      [t('secretaryName'), session.secretary?.name],
+      [t('turnDurationTitle'), `${turnDurationMs(session) / 60000} ${t('minutesUnit')}`],
+      [t('people'), String(participants.length)],
+      [t('statement1'), session.statement1],
+      [t('statement2'), session.statement2],
+      ...[1, 2, 3].map(index => [`${t('reflectionQuestion')} ${index}`, session.reflectionQuestions?.[index] || t(`reflection${index}`)]),
+      [t('sessionNotes'), session.notes]
+    ];
+    const results = participants.map(([memberId, person]) => {
+      const side = round => ['true', 'false'].includes(session.choices?.[round]?.[memberId]?.side) ? t(session.choices[round][memberId].side) : '—';
+      const turn = round => session.turns?.[round]?.[memberId] ? t('turnUsed') : '—';
+      return `<tr class="border-t border-neutral-200"><th scope="row" class="px-3 py-2 text-left font-semibold">${escapeHtml(person?.name || '—')}</th><td class="px-3 py-2 text-center">${escapeHtml(side('1'))}</td><td class="px-3 py-2 text-center">${escapeHtml(turn('1'))}</td><td class="px-3 py-2 text-center">${escapeHtml(side('2'))}</td><td class="px-3 py-2 text-center">${escapeHtml(turn('2'))}</td></tr>`;
     }).join('');
-    return `<details class="rounded-lg border border-neutral-200 p-4"><summary class="cursor-pointer font-semibold">${escapeHtml(date)} · ${escapeHtml(session.statement1 || t('debateHistory'))}</summary><div class="mt-4 space-y-3 text-sm"><p><strong>${t('hostName')}:</strong> ${escapeHtml(session.host?.name || '—')} · <strong>${t('secretaryName')}:</strong> ${escapeHtml(session.secretary?.name || '—')}</p><p><strong>${t('statement1')}:</strong> ${escapeHtml(session.statement1)}</p><p><strong>${t('statement2')}:</strong> ${escapeHtml(session.statement2)}</p><p><strong>${t('turnDurationTitle')}:</strong> ${turnDurationMs(session) / 60000} ${t('minutesUnit')}</p><p><strong>${t('people')}:</strong> ${escapeHtml(participants || '—')}</p>${rounds}<div><strong>${t('reflectionQuestions')}:</strong><ol class="mt-1 list-decimal space-y-1 pl-5">${questions.map(question => `<li>${escapeHtml(question)}</li>`).join('')}</ol></div><p class="whitespace-pre-wrap"><strong>${t('sessionNotes')}:</strong> ${escapeHtml(session.notes || '—')}</p></div></details>`;
+    return `<details class="rounded-lg border border-neutral-200 p-4"><summary class="cursor-pointer font-semibold">${escapeHtml(date(session.endedAt || session.createdAt))} · ${escapeHtml(String(id).slice(-5))} · ${escapeHtml(session.statement1 || t('debateHistory'))}</summary><div class="mt-4 space-y-5"><section><h3 class="mb-2 text-sm font-semibold">${t('historyOverview')}</h3><div class="overflow-x-auto rounded-lg border border-neutral-200"><table class="w-full border-collapse text-sm"><tbody>${fields.map(([label, value]) => field(label, value)).join('')}</tbody></table></div></section><section><h3 class="mb-2 text-sm font-semibold">${t('historyResults')}</h3><div class="overflow-x-auto rounded-lg border border-neutral-200"><table class="w-full min-w-[560px] border-collapse text-sm"><thead class="bg-[#F7F6F2]"><tr><th scope="col" rowspan="2" class="px-3 py-2 text-left">${t('historyMember')}</th><th scope="colgroup" colspan="2" class="border-l border-neutral-200 px-3 py-2 text-center">${t('round1')}</th><th scope="colgroup" colspan="2" class="border-l border-neutral-200 px-3 py-2 text-center">${t('round2')}</th></tr><tr class="border-t border-neutral-200"><th scope="col" class="px-3 py-2 text-center">${t('historySide')}</th><th scope="col" class="px-3 py-2 text-center">${t('historyTurn')}</th><th scope="col" class="px-3 py-2 text-center">${t('historySide')}</th><th scope="col" class="px-3 py-2 text-center">${t('historyTurn')}</th></tr></thead><tbody>${results || `<tr><td colspan="5" class="px-3 py-3 text-center text-neutral-500">${t('notJoined')}</td></tr>`}</tbody></table></div></section></div></details>`;
   }).join('') : `<p class="text-sm text-neutral-500">${t('noDebateHistory')}</p>`;
 }
 
 export function renderParticipant(root, state, t) {
   const {session, memberId} = state;
   root.querySelector('#member-unavailable').hidden = !!session;
+  const loggedOut = state.leaving || state.loggedOut;
+  root.querySelector('#member-logged-out').hidden = !session || !loggedOut;
+  root.querySelector('#member-logged-out-message').textContent = t(state.leaving ? 'leavingWorkshop' : 'loggedOutWorkshop');
+  root.querySelector('#member-new-tab').hidden = !!state.leaving;
   if (!session) {
     const expired = state.endedSession;
     root.querySelector('#member-unavailable').textContent = t(expired ? 'expiredWorkshopTitle' : 'noActiveDebate');
@@ -246,10 +261,16 @@ export function renderParticipant(root, state, t) {
     return;
   }
   root.querySelector('#member-expired').hidden = true;
-  const member = session.participants?.[memberId];
+  if (loggedOut) {
+    root.querySelector('#join-form').hidden = true;
+    root.querySelector('#member-panel').hidden = true;
+    return;
+  }
+  const member = state.joinId === memberId ? session.participants?.[memberId] : null;
   root.querySelector('#join-form').hidden = !!member;
   root.querySelector('#member-panel').hidden = !member;
   if (!member) return;
+  root.querySelector('#member-display-name').textContent = member.name || '—';
   const round = String(session.round);
   const choices = session.choices?.[round] || {};
   const choice = choices[memberId];

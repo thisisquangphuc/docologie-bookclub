@@ -14,7 +14,7 @@ const language = getLanguage();
 const database = initializeDatabase();
 const service = createDebateService(database);
 const app = document.querySelector('#app');
-const state = {roster:{},session:null,sessionRef:null,endedSession:null,endedSessionId:'',history:{},editingSettings:false,editingInternal:false,editingTimer:false,activeTab:'control',hostReady:false,memberId:sessionStorage.getItem('member_lobby_id')||sessionStorage.getItem(`debate_member_${sessionId}`)||'',joinId:'',presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
+const state = {roster:{},session:null,sessionRef:null,endedSession:null,endedSessionId:'',history:{},editingSettings:false,editingInternal:false,editingTimer:false,activeTab:'control',hostReady:false,memberId:sessionStorage.getItem(`debate_member_${sessionId}`)||sessionStorage.getItem('member_lobby_id')||'',joinId:'',joinReady:false,leaving:false,loggedOut:false,presenceId:crypto.randomUUID(),stopPresence:null,stopSession:null,stopHistory:null};
 const t = key => translate(language,key);
 
 function mountView() {
@@ -32,6 +32,7 @@ function mountView() {
   else if (mode === 'display') app.innerHTML = createWorkshopMetaMarkup(t) + createDisplayMarkup(t);
   else if (mode === 'join') app.innerHTML = createWorkshopMetaMarkup(t) + createParticipantMarkup(t);
   else app.innerHTML = `<p class="rounded-xl border border-[#E2E0D8] bg-white p-5">${t('noSession')}</p>`;
+  if (mode === 'join') app.querySelector('#member-new-tab').href = location.href;
   if (mode === 'join' && !sessionId) showError(t('noSession'));
 }
 
@@ -54,6 +55,7 @@ function watchSession(id) {
       if (canHost && state.hostReady) void resumeHostSession();
       return;
     }
+    if (mode === 'join' && state.joinReady && state.joinId && !state.leaving && !value.participants?.[state.joinId]) clearParticipantIdentity(state.joinId);
     state.session = value;
     state.sessionRef = ref;
     render();
@@ -86,25 +88,50 @@ function renderRosterOptions() {
 }
 
 function memberName(value) { return typeof value === 'string' ? value : value?.name || ''; }
+function clearParticipantIdentity(id) {
+  state.stopPresence?.();
+  state.stopPresence = null;
+  if (sessionStorage.getItem('member_lobby_id') === id) sessionStorage.removeItem('member_lobby_id');
+  sessionStorage.removeItem(`debate_member_${state.sessionRef?.key || sessionId}`);
+  state.memberId = '';
+  state.joinId = '';
+  state.joinReady = false;
+  state.loggedOut = true;
+}
 function resumeParticipantIfKnown() {
-  if (mode === 'join' && state.session && state.memberId && state.roster[state.memberId] && state.joinId !== state.memberId) void joinParticipant(state.memberId);
+  if (mode === 'join' && !state.leaving && !state.loggedOut && state.session && state.memberId && state.roster[state.memberId] && state.joinId !== state.memberId) void joinParticipant(state.memberId);
 }
 
 async function joinParticipant(id) {
-  if (!state.sessionRef || !state.session || !state.roster[id] || state.joinId === id) return;
+  if (!state.sessionRef || !state.session || !state.roster[id] || state.joinId || state.leaving || state.loggedOut) return;
   state.memberId = id;
   state.joinId = id;
   sessionStorage.setItem(`debate_member_${state.sessionRef.key}`,id);
-  try { state.stopPresence = await service.joinSession(state.sessionRef,id,memberName(state.roster[id]),state.presenceId,()=>showError()); render(); }
-  catch { state.joinId=''; showError(); }
+  try { state.stopPresence = await service.joinSession(state.sessionRef,id,memberName(state.roster[id]),state.presenceId,()=>showError()); state.joinReady = true; render(); }
+  catch { state.joinId=''; state.joinReady = false; showError(); }
 }
 
 async function handleJoin(event) {
   event.preventDefault();
+  if (state.joinId || state.leaving || state.loggedOut) return;
   const value = app.querySelector('#member-name').value.trim();
   const match = Object.entries(state.roster).find(([,item])=>memberName(item)===value);
   if (!match) { showError(t('invalidName')); return; }
   await joinParticipant(match[0]);
+}
+
+async function leaveParticipant() {
+  if (mode !== 'join' || !state.sessionRef || !state.joinId || state.leaving || state.loggedOut) return;
+  if (!confirm(t('leaveConfirm'))) return;
+  const id = state.joinId;
+  state.leaving = true;
+  render();
+  try {
+    await service.leaveSession(state.sessionRef, id);
+    clearParticipantIdentity(id);
+    app.querySelector('#join-error').textContent = '';
+  } catch { showError(); }
+  finally { state.leaving = false; render(); }
 }
 
 async function handleCreateSession(event) {
@@ -366,6 +393,7 @@ app.addEventListener('click',event=>{
   else if(action==='resume-turn')void resumeTurn(speakerId);
   else if(action==='finish-turn')void finishTurn(speakerId);
   else if(action==='copy-link')void copyJoinLink();
+  else if(action==='leave-workshop')void leaveParticipant();
 });
 document.querySelector('#language').addEventListener('change',event=>{localStorage.setItem('debate_language',event.target.value);location.reload();});
 document.querySelector('#rules-button').addEventListener('click',()=>{

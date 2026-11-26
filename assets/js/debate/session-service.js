@@ -72,6 +72,16 @@ export function createDebateService(database) {
         presenceRef.remove().catch(onError);
       };
     },
+    async leaveSession(sessionRef, memberId) {
+      return sessionRef.update({
+        [`participants/${memberId}`]: null,
+        [`presence/${memberId}`]: null,
+        [`choices/1/${memberId}`]: null,
+        [`choices/2/${memberId}`]: null,
+        [`turns/1/${memberId}`]: null,
+        [`turns/2/${memberId}`]: null
+      });
+    },
     async chooseSide(sessionRef, round, memberId, side) {
       const choiceRef = sessionRef.child(`choices/${round}/${memberId}`);
       if (round === '1') return choiceRef.set({side, updatedAt: Date.now()});
