@@ -254,6 +254,8 @@ test('member sees reflection questions and an ended debate message, without inte
   const markup = createParticipantMarkup(key => translate('en', key));
   assert.match(markup, /id="member-display-name"/);
   assert.match(markup, /data-action="leave-workshop"/);
+  assert.ok(markup.indexOf('id="member-unavailable-title"') < markup.indexOf('id="member-expired"'));
+  assert.doesNotMatch(markup, /member-last-statement/);
   const nodes = new Map();
   const root = {
     querySelector: selector => {
@@ -282,11 +284,13 @@ test('member sees reflection questions and an ended debate message, without inte
   state.endedSession = {statement1: 'Previous statement'};
   renderParticipant(root, state, key => translate('en', key));
   assert.equal(root.querySelector('#member-expired').hidden, false);
-  assert.equal(root.querySelector('#member-last-statement').textContent, 'Previous statement');
+  assert.equal(root.querySelector('#member-unavailable-title').textContent, 'This workshop has ended');
 });
 
 test('projection shows the unavailable message after the debate ends', () => {
   const markup = createDisplayMarkup(key => translate('en', key));
+  assert.ok(markup.indexOf('id="display-statement"') < markup.indexOf('id="display-expired"'));
+  assert.doesNotMatch(markup, /display-last-statement/);
   assert.ok(markup.indexOf('id="display-reflection"') < markup.indexOf('id="display-qr"'));
   assert.match(markup, /id="display-qr" class="mx-auto flex/);
   const nodes = new Map();
@@ -302,5 +306,6 @@ test('projection shows the unavailable message after the debate ends', () => {
   assert.equal(root.querySelector('#display-expired').hidden, false);
   assert.equal(root.querySelector('#display-qr-expired').hidden, false);
   assert.equal(root.querySelector('#display-qr').hidden, true);
-  assert.match(root.querySelector('#display-status').textContent, /link has expired/);
+  assert.equal(root.querySelector('#display-status').textContent, '');
+  assert.equal(root.querySelector('#display-statement').textContent, 'This workshop has ended');
 });
