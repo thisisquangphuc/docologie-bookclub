@@ -44,3 +44,11 @@ Apply these rules whenever changing the member-facing experience.
 - Avoid inline event handlers and implicit global state. Bind accessible controls in the owning module, keep state transitions explicit, validate input at the boundary, and surface database failures in the relevant view.
 - Follow existing naming and formatting conventions, preserve EN/DE support, and add documentation beside the relevant feature when it clarifies ownership or operational setup.
 - For debate feature routes, data ownership, and module responsibilities, consult `docs/debate-workshop.md` and preserve its separation between host, projection, participant, service, and view code.
+
+## JavaScript and HTML Naming Conventions
+
+- Keep browser code as native ES modules; use two-space indentation, semicolons, and spaces after commas and around object-literal colons, matching the shared modules.
+- Use `camelCase` for variables and functions. Use `UPPER_SNAKE_CASE` for exported constants that represent fixed configuration or policy values, following `ROUND_DURATION_MS` and `ADMIN_UID`.
+- Use semantic HTML elements for landmarks and content sections. Use `div` for layout-only wrappers.
+- Give stable admin and feature sections descriptive, unique `id` values in kebab-case, scoped by feature and role (for example, `admin-member-roster-section`). Use `aria-labelledby` when a section has a visible heading.
+- Keep IDs that existing controllers query stable. Use `data-action` for delegated user actions and classes for styling; do not add IDs to anonymous layout wrappers without a concrete selection or accessibility need.

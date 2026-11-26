@@ -29,7 +29,7 @@ form.addEventListener('submit', async event => {
   button.disabled = true;
   showStatus('Signing in…');
   try {
-    const result = await auth.signInWithEmailAndPassword(emailInput.value.trim(),passwordInput.value);
+    const result = await auth.signInWithEmailAndPassword(emailInput.value.trim(), passwordInput.value);
     if (!isAuthorizedAdmin(result.user)) {
       await auth.signOut();
       showStatus('This account is not authorized for admin access.');
