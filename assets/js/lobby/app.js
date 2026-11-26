@@ -217,7 +217,7 @@ stopRoster = service.observeRoster(value => {
   }
   populateMemberSelect();
 },error => {document.querySelector('#member-entry-status').textContent = error?.message || 'Could not load the club member list.';});
-stopSettings = service.observe('settings',value => {
+stopSettings = service.observeSettings(value => {
   securitySettingLoaded = true;
   requireSecurityQuestion = value?.requireMemberSecurityQuestion === true;
   updateSecurityChallenge(memberSelect.value);

@@ -33,6 +33,9 @@ export function createLobbyService(database) {
     observeRoster(onValue, onError) {
       return observe('member_roster',onValue,onError);
     },
+    observeSettings(onValue, onError) {
+      return observe('settings',onValue,onError);
+    },
     observeSecurityQuestions(onValue, onError) {
       return observe('member_security_questions',onValue,onError);
     },
