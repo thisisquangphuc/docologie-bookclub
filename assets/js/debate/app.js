@@ -287,7 +287,7 @@ async function startRound(number) {
   let saved = false;
   try {
     if (!await savePendingChanges() || !canStartRound(state.session, number)) return;
-    saved = await saveSession({round:String(number),phase:'active',status:'live',timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(state.session),running:false,paused:false}});
+    saved = await saveSession({round:String(number),phase:'active',status:'live',...(number === 1 ? {startedAt: Date.now()} : {}),timer:{speakerId:null,endsAt:null,remainingMs:turnDurationMs(state.session),running:false,paused:false}});
   } finally {
     if (!saved) { state.startingRound = 0; render(); }
   }

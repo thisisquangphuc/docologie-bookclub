@@ -223,7 +223,7 @@ test('host markup separates Control, Settings, and History', () => {
 
 test('workshop metadata shows ID, time, participants, and open or closed status', () => {
   const markup = createWorkshopMetaMarkup(key => translate('en', key));
-  for (const id of ['workshop-status', 'workshop-id', 'workshop-time', 'workshop-participants']) assert.match(markup, new RegExp(`id="${id}"`));
+  for (const id of ['workshop-status', 'workshop-last-label', 'workshop-id', 'workshop-time-label', 'workshop-time', 'workshop-ended-field', 'workshop-ended-time', 'workshop-participants']) assert.match(markup, new RegExp(`id="${id}"`));
   const nodes = new Map();
   const root = {querySelector: selector => {
     if (!nodes.has(selector)) nodes.set(selector, {textContent: '', className: ''});
@@ -234,9 +234,20 @@ test('workshop metadata shows ID, time, participants, and open or closed status'
   assert.equal(root.querySelector('#workshop-id').textContent, '23456');
   assert.equal(root.querySelector('#workshop-participants').textContent, 2);
   assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop open');
-  session.status = 'ended';
+  assert.equal(root.querySelector('#workshop-last-label').hidden, true);
+  assert.equal(root.querySelector('#workshop-time-label').textContent, 'Created');
+  assert.equal(root.querySelector('#workshop-ended-field').hidden, true);
+  session.status = 'ended'; session.startedAt = Date.UTC(2026, 10, 26, 19); session.endedAt = Date.UTC(2026, 10, 26, 21);
   renderWorkshopMeta(root, session, 'session-123456', key => translate('en', key), 'en');
   assert.equal(root.querySelector('#workshop-status').textContent, 'Workshop closed');
+  assert.equal(root.querySelector('#workshop-last-label').hidden, false);
+  assert.equal(root.querySelector('#workshop-time-label').textContent, 'Started');
+  assert.match(root.querySelector('#workshop-time').textContent, /20:00/);
+  assert.match(root.querySelector('#workshop-ended-time').textContent, /22:00/);
+  assert.equal(root.querySelector('#workshop-ended-field').hidden, false);
+  delete session.startedAt;
+  renderWorkshopMeta(root, session, 'session-123456', key => translate('en', key), 'en');
+  assert.equal(root.querySelector('#workshop-time-label').textContent, 'Created');
 });
 
 test('member sees reflection questions and an ended debate message, without internal notes', () => {

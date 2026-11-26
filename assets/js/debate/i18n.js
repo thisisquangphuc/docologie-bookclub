@@ -21,6 +21,8 @@ Object.assign(messages.en, {joinLimitTitle:'Join limit',joinLimitHint:'Each rost
 Object.assign(messages.de, {joinLimitTitle:'Teilnahmelimit',joinLimitHint:'Jeder Name aus der Mitgliederliste hat eine begrenzte Zahl von Beitritten. Ein neuer Tab zählt erneut; das Aktualisieren desselben Tabs nicht.',joinLimitLabel:'Beitritte pro Mitglied',saveJoinLimit:'Limit speichern',invalidJoinLimit:'Wähle eine ganze Zahl von 1 bis 10.',joinLimitSaved:'Teilnahmelimit gespeichert.',joinLimitWarning:'Diese Namen haben das Teilnahmelimit erreicht. Neue Beitritte bleiben bis zur Entsperrung gesperrt.',unblockMember:'Entsperren',memberUnblocked:'Mitglied entsperrt.',joinLimitBlocked:'Dieser Name hat das Teilnahmelimit erreicht. Bitte die Moderation um Entsperrung oder wähle einen anderen Namen.'});
 Object.assign(messages.en, {historyChoicesCode:'Choices',historySpeakingCode:'Speaking',historyCodeLegend:'Each pair is Round 1 then Round 2. Choices: 1 = TRUE, 0 = FALSE, – = no choice. Speaking: F = finished, x = no completed turn.'});
 Object.assign(messages.de, {historyChoicesCode:'Entscheidungen',historySpeakingCode:'Redebeiträge',historyCodeLegend:'Jedes Paar steht für Runde 1, dann Runde 2. Entscheidung: 1 = RICHTIG, 0 = FALSCH, – = keine Wahl. Redebeitrag: F = beendet, x = kein abgeschlossener Beitrag.'});
+Object.assign(messages.en, {workshopStarted:'Started',workshopEnded:'Ended'});
+Object.assign(messages.de, {workshopStarted:'Begonnen',workshopEnded:'Beendet'});
 
 export function getLanguage() {
   return localStorage.getItem('debate_language') === 'de' ? 'de' : 'en';

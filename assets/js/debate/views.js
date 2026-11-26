@@ -4,21 +4,27 @@ import { formatTime, TURN_DURATION_OPTIONS_MINUTES, turnDurationMs } from './tim
 import { joinLimit } from './session-service.js';
 
 export function createWorkshopMetaMarkup(t) {
-  return `<section id="workshop-meta" aria-label="${t('workshopInfo')}" class="mb-5 rounded-xl border border-[#E2E0D8] bg-white p-4"><div class="flex flex-wrap items-center gap-x-6 gap-y-3"><span id="workshop-status" class="rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider"></span><dl class="flex flex-wrap gap-x-6 gap-y-2 text-sm"><div><dt class="text-xs text-neutral-500">${t('workshopId')}</dt><dd id="workshop-id" class="break-all font-semibold"></dd></div><div><dt class="text-xs text-neutral-500">${t('workshopTime')}</dt><dd id="workshop-time" class="font-semibold"></dd></div><div><dt class="text-xs text-neutral-500">${t('participants')}</dt><dd id="workshop-participants" class="font-semibold tabular-nums"></dd></div></dl></div></section>`;
+  return `<section id="workshop-meta" aria-label="${t('workshopInfo')}" class="mb-5 rounded-xl border border-[#E2E0D8] bg-white p-4"><div class="flex flex-wrap items-center gap-x-6 gap-y-3"><span id="workshop-status" class="rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider"></span><span id="workshop-last-label" hidden class="text-xs font-bold uppercase tracking-wider text-[#71363C]">${t('lastWorkshop')}</span><dl class="flex flex-wrap gap-x-6 gap-y-2 text-sm"><div><dt class="text-xs text-neutral-500">${t('workshopId')}</dt><dd id="workshop-id" class="break-all font-semibold"></dd></div><div><dt id="workshop-time-label" class="text-xs text-neutral-500">${t('workshopTime')}</dt><dd id="workshop-time" class="font-semibold"></dd></div><div id="workshop-ended-field" hidden><dt class="text-xs text-neutral-500">${t('workshopEnded')}</dt><dd id="workshop-ended-time" class="font-semibold"></dd></div><div><dt class="text-xs text-neutral-500">${t('participants')}</dt><dd id="workshop-participants" class="font-semibold tabular-nums"></dd></div></dl></div></section>`;
 }
 
 export function renderWorkshopMeta(root, session, sessionId, t, language) {
   const open = !!session && session.status !== 'ended';
+  const ended = session?.status === 'ended';
+  const formatDate = value => value ? new Date(value).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', {dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin'}) : '—';
   const status = root.querySelector('#workshop-status');
   status.textContent = t(open ? 'workshopOpen' : 'workshopClosed');
   status.className = `rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white ${open ? 'bg-neutral-900' : 'bg-[#71363C]'}`;
+  root.querySelector('#workshop-last-label').hidden = !ended;
   root.querySelector('#workshop-id').textContent = sessionId ? String(sessionId).slice(-5) : '—';
-  root.querySelector('#workshop-time').textContent = session?.createdAt ? new Date(session.createdAt).toLocaleString(language === 'de' ? 'de-DE' : 'en-GB', {dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin'}) : '—';
+  root.querySelector('#workshop-time-label').textContent = t(session?.startedAt ? 'workshopStarted' : 'workshopTime');
+  root.querySelector('#workshop-time').textContent = formatDate(session?.startedAt || session?.createdAt);
   root.querySelector('#workshop-participants').textContent = Object.keys(session?.participants || {}).length;
+  root.querySelector('#workshop-ended-field').hidden = !ended;
+  root.querySelector('#workshop-ended-time').textContent = ended ? formatDate(session.endedAt) : '—';
 }
 
 function createExpiredSummaryMarkup(t, prefix) {
-  return `<section id="${prefix}-expired" hidden class="rounded-xl border border-[#E2E0D8] bg-white p-5"><h3 class="serif text-xl">${t('lastWorkshop')}</h3><p id="${prefix}-last-statement" class="mt-2 text-sm font-semibold"></p><p class="mt-3 text-sm text-[#71363C]">${t('expiredLinkNotice')}</p></section>`;
+  return `<section id="${prefix}-expired" hidden class="rounded-xl border border-[#E2E0D8] bg-white p-5"><h3 class="serif text-xl">${t('statement1')}</h3><p id="${prefix}-last-statement" class="mt-2 text-sm font-semibold"></p><p class="mt-3 text-sm text-[#71363C]">${t('expiredLinkNotice')}</p></section>`;
 }
 
 function createMonitorMarkup(t) {
@@ -176,7 +182,7 @@ export function renderDisplay(root, state, t, prompts, makeQr) {
   const {session, sessionRef} = state;
   if (!session) {
     const expired = state.endedSession;
-    root.querySelector('#display-round').textContent = expired ? t('lastWorkshop') : '';
+    root.querySelector('#display-round').textContent = '';
     root.querySelector('#display-statement').hidden = false;
     root.querySelector('#display-statement').textContent = t(expired ? 'expiredWorkshopTitle' : 'noActiveDebate');
     root.querySelector('#display-counts').hidden = true;
@@ -236,6 +242,7 @@ export function renderHostHistory(root, history, t) {
     const fields = [
       [t('workshopId'), String(id).slice(-5)],
       [t('workshopTime'), date(session.createdAt)],
+      ...(session.startedAt ? [[t('workshopStarted'), date(session.startedAt)]] : []),
       [t('historyEnded'), date(session.endedAt)],
       [t('hostName'), session.host?.name],
       [t('secretaryName'), session.secretary?.name],
